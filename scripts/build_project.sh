@@ -129,7 +129,7 @@ echo "Stop running process..."
 ssh $BBB_ADDRESS make QUIET=true --no-print-directory -C $BBB_BELA_HOME stop
 
 # check if project exists
-[ $FORCE -eq 1 ] ||	check_project_exists_prompt $BBB_PROJECT_NAME
+#[ $FORCE -eq 1 ] ||	check_project_exists_prompt $BBB_PROJECT_NAME
 
 # This file is used to keep track of when the last upload was made,
 # so to check for modifications if WATCH is active
