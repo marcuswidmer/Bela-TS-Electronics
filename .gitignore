@@ -4,7 +4,7 @@
 /IDE/settings.json
 /IDE/node_modules
 /ide-redesign/node_modules
-/projects/
+#/projects/
 /tmp/
 *.sw?
 *.orig
