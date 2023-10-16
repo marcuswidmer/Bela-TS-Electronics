@@ -4,7 +4,6 @@
 /IDE/settings.json
 /IDE/node_modules
 /IDE/frontend-dev/node_modules
-/projects/
 /ide-redesign/node_modules
 /tmp/
 *.sw?
