@@ -6,15 +6,15 @@
 
 # Find location of this script so we can locate the rest of the files
 SCRIPTDIR=$(dirname "$0")
-[ -z "$SCRIPTDIR" ] && SCRIPTDIR="./" || SCRIPTDIR="$SCRIPTDIR"/ 
-. "$SCRIPTDIR".bela_common || { echo "You must be in Bela/scripts to run these scripts" | exit 1; }  
+[ -z "$SCRIPTDIR" ] && SCRIPTDIR="./" || SCRIPTDIR="$SCRIPTDIR"/
+. "$SCRIPTDIR".bela_common || { echo "You must be in Bela/scripts to run these scripts" | exit 1; }
 
 [ -z "$IDE_FOLDER" ] && IDE_FOLDER=$SCRIPTDIR/../IDE
 [ -z "$FORCE_REPLACE" ] && FORCE_REPLACE=0
 FILES_TO_COPY="core include Makefile Makefile.libraries Makefile.linkbela examples Doxyfile scripts resources pru libraries"
 
 # The following variables are manually copied from the Makefile.
-# It is a bit nasty, but here we need to handle the case that the board may be 
+# It is a bit nasty, but here we need to handle the case that the board may be
 # in any arbitrarily (bad) condition and try to handle it the best we can
 BELA_IDE_SCREEN_NAME=IDE-Bela
 SCREEN_NAME=Bela
@@ -37,7 +37,7 @@ usage ()
     Running this script will discard all changes to the core code on the remote
     end.
 
-Command line options:    
+Command line options:
     -i arg : allows to set the username and IP address of the remote end (default: $BBB_ADDRESS)
     -b arg : allows to set the path to the Bela folder on the remote end. Use quotes if you use the \"~\" symbol (default: $BBB_BELA_HOME)
     --clean : removes all the files in the $BBB_BELA_HOME folder, INCLUDING any source code you may have in the $BBB_BELA_HOME/projects/ subdirectory.
@@ -57,7 +57,7 @@ signal_handler ()
   exit
 }
 
-trap signal_handler 2 
+trap signal_handler 2
 
 error_handler () {
  [ $1 -eq 0 ] && printf "done\n" || { [ -z "$2" ] && printf "\nAn error occurred.\n" || printf "$2"; exit 1; }
@@ -71,7 +71,7 @@ DOXYGEN=1
 UPDATE_IDE=1
 while [ "$1" != "" ]; do
   case $1 in
-    -b)           
+    -b)
       shift
       BBB_BELA_HOME=$1
     ;;
@@ -102,10 +102,10 @@ while [ "$1" != "" ]; do
     --no-frills)
       FULL=0
     ;;
-    -y)          
+    -y)
        ALWAYS_YES=1
     ;;
-    *)            
+    *)
       usage
       exit 1
     ;;
@@ -147,7 +147,7 @@ then
   if [ "$ALWAYS_YES" -eq 1 ];
   then
     printf "y\n"
-  else 
+  else
     read REPLY;
     [ -z "$REPLY" ] || { [ "$REPLY" !=  y ]  && [ "$REPLY" != Y ]; } && { echo "Aborting..."; exit 1; }
   fi
@@ -160,7 +160,7 @@ echo "Updating Bela core files to remote folder $BBB_BELA_HOME"
 # Stop Bela if running and remove all files
 if [ "$FULL" -eq 1 ]
 then
-  printf "Stopping Bela..." 
+  printf "Stopping Bela..."
   ssh "$BBB_ADDRESS" "make -C \"$BBB_BELA_HOME\" idestop stop &>/dev/null; screen -X -S Bela quit &>/dev/null; screen -X -S IDE-Bela quit &>/dev/null; true";
   error_handler $?
 fi
@@ -236,8 +236,8 @@ printf "Creating directory structure on the board..."
 ssh "$BBB_ADDRESS" "mkdir -p \"$BBB_BELA_HOME\"/build/core \"$BBB_BELA_HOME\"/projects"
 error_handler $?
 
-if [ "$DOXYGEN" -eq 1 ] 
-then 
+if [ "$DOXYGEN" -eq 1 ]
+then
   printf "Generating on-board documentation..."
   ssh "$BBB_ADDRESS" "cd \"$BBB_BELA_HOME\"; rm -rf Documentation/; doxygen &> /dev/null"
   error_handler $? "\nError while generating Doxygen documentation\n"
@@ -260,13 +260,13 @@ then
 	then
 	  export BBB_ADDRESS BBB_BELA_HOME
 	  ./scripts/update_IDE -y --no-frills
-      [ "$FULL" -eq 1 ] && ssh "$BBB_ADDRESS" "make -C \"$BBB_BELA_HOME\" --no-print-directory idestart" 
+      [ "$FULL" -eq 1 ] && ssh "$BBB_ADDRESS" "make -C \"$BBB_BELA_HOME\" --no-print-directory idestart"
 	else
-	  # run the IDE 
+	  # run the IDE
 	   printf "\nThe Bela core files were updated on the board, but a valid IDE folder was not found in $IDE_FOLDER/, so the IDE was not updated
 	You can get a copy of the most up-to-date IDE files from https://github.com/LBDonovan/bela-ide\n"
 	  [ $FULL -eq 1 ] && printf "If there was an older version of the IDE on the board, it is being restarted.\n\n" &&\
-	    ssh "$BBB_ADDRESS" "make -C \"$BBB_BELA_HOME\" --no-print-directory idestart &> /dev/null" 
+	    ssh "$BBB_ADDRESS" "make -C \"$BBB_BELA_HOME\" --no-print-directory idestart &> /dev/null"
 	fi
 else
 	echo "Not updating the IDE"
