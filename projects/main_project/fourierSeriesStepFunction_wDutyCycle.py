@@ -2,9 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 N = 1000
-numHarmonics = 9
+numHarmonics = 50
 A = 1
-T_p = 0.5
+T_p = 0.9
 T = 1
 
 harmonics = np.zeros([N, numHarmonics])

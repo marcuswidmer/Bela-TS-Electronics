@@ -31,6 +31,7 @@ The Bela software is distributed under the GNU Lesser General Public License
 #include "GranularReverb.hpp"
 #include "KarplusResonator.hpp"
 #include "LoFiMachine.hpp"
+#include "Tremolo.hpp"
 
 
 // Marcus destroyed again
@@ -53,7 +54,7 @@ enum Program {
     pgmGranularReverb,
     pgmKarplusResonator,
     pgmLofiMachine,
-    ProgramFour,
+    pgmTremolo,
 };
 
 int gAudioFramesPerAnalogFrame = 0;
@@ -62,6 +63,7 @@ Program pgm;
 GranularReverb granularReverb;
 KarplusResonator karplusResonator;
 LoFiMachine lofiMachine;
+Tremolo tremolo;
 
 float programLevels[4] = {0.000000, 0.274918, 0.549789, 0.825043};
 float levelDiff = programLevels[1];
@@ -81,7 +83,7 @@ static float readAudioTestInput()
 static void setProgram(AnalogIns ins)
 {
     if (ins.input_0 < programLevels[1] - (levelDiff / 2))
-        pgm = ProgramFour;
+        pgm = pgmTremolo;
     else if (ins.input_0 >= programLevels[1] - (levelDiff / 2) && ins.input_0 < programLevels[2] - (levelDiff / 2))
         pgm = pgmLofiMachine;
     else if (ins.input_0 >= programLevels[2] - (levelDiff / 2) && ins.input_0 < programLevels[3] - (levelDiff / 2))
@@ -106,6 +108,7 @@ bool setup(BelaContext *context, void *userData)
     printf("Fs: %f. Buffersize: %d\n", context->audioSampleRate, context->audioFrames);
 
     lofiMachine.setSampleRateAndFilterSettings(context->audioSampleRate);
+    tremolo.init();
 
     gInverseSampleRate = 1.0 / context->audioSampleRate;
 
@@ -141,6 +144,7 @@ void render(BelaContext *context, void *userData)
             karplusResonator.setAnalogIns(ins);
             granularReverb.setAnalogIns(ins);
             lofiMachine.setAnalogIns(ins);
+            tremolo.setAnalogIns(ins);
         }
 
         //float in = readAudioTestInput();
@@ -157,6 +161,8 @@ void render(BelaContext *context, void *userData)
             case pgmLofiMachine:
                 lofiMachine.process(in, out);
                 break;
+            case pgmTremolo:
+                tremolo.process(in, out);
             default:
                 break;
         }
