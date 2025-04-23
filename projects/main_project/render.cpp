@@ -32,7 +32,7 @@ The Bela software is distributed under the GNU Lesser General Public License
 #include "KarplusResonator.hpp"
 #include "LoFiMachine.hpp"
 #include "Tremolo.hpp"
-
+#include "Sampler.hpp"
 
 // Marcus destroyed again
 int gSensorInput0 = 6;
@@ -55,6 +55,7 @@ enum Program {
     pgmKarplusResonator,
     pgmLofiMachine,
     pgmTremolo,
+    pgmSampler,
 };
 
 int gAudioFramesPerAnalogFrame = 0;
@@ -64,6 +65,7 @@ GranularReverb granularReverb;
 KarplusResonator karplusResonator;
 LoFiMachine lofiMachine;
 Tremolo tremolo;
+Sampler sampler;
 
 float programLevels[4] = {0.000000, 0.274918, 0.549789, 0.825043};
 float levelDiff = programLevels[1];
@@ -83,7 +85,7 @@ static float readAudioTestInput()
 static void setProgram(AnalogIns ins)
 {
     if (ins.input_0 < programLevels[1] - (levelDiff / 2))
-        pgm = pgmTremolo;
+        pgm = pgmSampler;
     else if (ins.input_0 >= programLevels[1] - (levelDiff / 2) && ins.input_0 < programLevels[2] - (levelDiff / 2))
         pgm = pgmLofiMachine;
     else if (ins.input_0 >= programLevels[2] - (levelDiff / 2) && ins.input_0 < programLevels[3] - (levelDiff / 2))
@@ -109,6 +111,7 @@ bool setup(BelaContext *context, void *userData)
 
     lofiMachine.setSampleRateAndFilterSettings(context->audioSampleRate);
     tremolo.init();
+    sampler.init(context->audioSampleRate);
 
     gInverseSampleRate = 1.0 / context->audioSampleRate;
 
@@ -145,10 +148,11 @@ void render(BelaContext *context, void *userData)
             granularReverb.setAnalogIns(ins);
             lofiMachine.setAnalogIns(ins);
             tremolo.setAnalogIns(ins);
+            sampler.setAnalogIns(ins);
         }
 
-        //float in = readAudioTestInput();
-        float in = audioRead(context, n, 0);
+        float in = readAudioTestInput();
+        //float in = audioRead(context, n, 0);
         float out[2] = {};
 
         switch (pgm) {
@@ -163,6 +167,10 @@ void render(BelaContext *context, void *userData)
                 break;
             case pgmTremolo:
                 tremolo.process(in, out);
+                break;
+            case pgmSampler:
+                sampler.process(out);
+                break;
             default:
                 break;
         }
