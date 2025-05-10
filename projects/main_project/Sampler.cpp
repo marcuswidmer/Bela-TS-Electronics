@@ -4,13 +4,31 @@
 #include <Bela.h>
 #include <libraries/Midi/Midi.h>
 
+void midiMessageCallback(MidiChannelMessage message, void* arg)
+{
+    auto * sampler = static_cast<Sampler *>(arg);
+	if (message.getType() == kmmNoteOn || (message.getType() == kmmNoteOff)) {
+		if (message.getType() == kmmNoteOn) {
+			rt_printf("note on: %d\n", message.getDataByte(0));
+            sampler->setNote(message.getDataByte(0) - sampler->getMidiNoteOffset());
+            sampler->playNewVoice();
+
+        } else if (message.getType() == kmmNoteOff) {
+			rt_printf("note off: %d\n", message.getDataByte(0) - sampler->getMidiNoteOffset());
+		}
+
+	} else if (message.getType() == kmmControlChange) {
+        rt_printf("control change\n");
+    }
+}
+
 Sampler::Sampler() : midi_()
 {
 }
 
 void Sampler::init(int fs)
 {
-    for (int i = 0; i < numSamples_; ++i) {
+    for (int i = 0; i < numVoices_; ++i) {
         samples_[i] = new Sample();
         samples_[i]->init(fs);
     }
@@ -18,7 +36,7 @@ void Sampler::init(int fs)
     midi_.readFrom(midiPort_);
 	//midi_.writeTo(midiPort_);
 	midi_.enableParser(true);
-	midi_.getParser()->setCallback(midiMessageCallback, (void*) midiPort_);
+	midi_.getParser()->setCallback(midiMessageCallback, (void*) this);
 }
 
 void Sampler::process(float out[2])
@@ -27,55 +45,44 @@ void Sampler::process(float out[2])
     out_tmp[0] = 0.0f;
     out_tmp[1] = 0.0f;
 
-    for (int i = 0; i < numSamples_; ++i) {
+    for (int i = 0; i < numVoices_; ++i) {
         samples_[i]->process(out_tmp);
         out[0] += amplitude_ * out_tmp[0];
         out[1] += amplitude_ * out_tmp[1];
     }
 }
 
-void Sampler::playNewSample()
+void Sampler::playNewVoice(int note)
 {
-    currentSampleIdx_++;
-    if (currentSampleIdx_ >= numSamples_)
-        currentSampleIdx_ = 0;
+    currentVoiceIdx_++;
+    if (currentVoiceIdx_ >= numVoices_)
+        currentVoiceIdx_ = 0;
 
-    samples_[currentSampleIdx_]->setPlaying(true);
+    samples_[currentVoiceIdx_]->setNote(note);
+    samples_[currentVoiceIdx_]->setPlaying(true);
+    activeVoices_[note] = currentVoiceIdx_;
 }
 
-void Sampler::releaseCurrentSample()
+void Sampler::releaseVoice(int note)
 {
-    samples_[currentSampleIdx_]->setPlaying(false);
+    if (!activeVoices_.contains(note)) {
+        printf("Inactive voice released. This should not happen\n");
+        return;
+    }
+
+    samples_[activeVoices_.at(note)]->setPlaying(false);
 }
 
 void Sampler::setAnalogIns(AnalogIns ins)
 {
     amplitude_ = map(ins.input_1, 0, 1, 0, 1);
     bool play = ins.input_7 > 0.42;
-    if (play != play_) {
-        if (play)
-            playNewSample();
-        else
-            releaseCurrentSample();
-        play_ = play;
-    }
-
-}
-
-void Sampler::midiMessageCallback(MidiChannelMessage message, void* arg) {
-	// if(arg != NULL){
-	// 	rt_printf("Message from midi port %s ", (const char*) arg);
-	// }
-	//message.prettyPrint();
-	if (message.getType() == kmmNoteOn || (message.getType() == kmmNoteOff)) {
-		if (message.getType() == kmmNoteOn)
-			rt_printf("note on: %d\n", message.getDataByte(0));
-		else if (message.getType() == kmmNoteOff) {
-			rt_printf("note off: %d\n", message.getDataByte(0));
-		}
-
-	} else if (message.getType() == kmmControlChange) {
-        rt_printf("control change");
-	}
+    // if (play != play_) {
+    //     if (play)
+    //         playNewVoice();
+    //     else
+    //         releaseCurrentSample();
+    //     play_ = play;
+    // }
 
 }

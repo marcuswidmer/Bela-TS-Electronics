@@ -6,6 +6,8 @@
 #include <memory>
 #include <chrono>
 #include <ctime>
+#include <iostream>
+#include <dirent.h>
 
 Sample::Sample()
 {
@@ -18,16 +20,64 @@ Sample::~Sample()
 
 void Sample::init(int fs)
 {
-    std::string gFilename = "skateboy.wav";
-    numFrames_ = AudioFileUtilities::getNumFrames(gFilename);
-    printf("sample_.numFrames: %d\n", numFrames_);
-    dataL_ = AudioFileUtilities::load(gFilename, numFrames_, 0)[0];
-    dataR_ = AudioFileUtilities::load(gFilename, numFrames_, 1)[0];
+    std::string directoryPath = "./guitar_chorus_mockasin_samples/output_notes_2";
+
+    // Open the directory
+    DIR* dir = opendir(directoryPath.c_str());
+    if (!dir) {
+        std::cerr << "Error: Could not open directory " << directoryPath << "\n";
+        return;
+    }
+
+    struct dirent* entry; // Represents a directory entry
+    while ((entry = readdir(dir)) != nullptr) {
+        // Skip "." and ".." entries
+        if (entry->d_name[0] == '.') {
+            continue;
+        }
+
+        // Check if the file has a ".wav" extension
+        std::string filename = entry->d_name;
+        if (filename.size() < 4 || filename.substr(filename.size() - 4) != ".wav") {
+            continue;
+        }
+
+        // Construct the full file path
+        std::string gFilename = directoryPath + "/" + filename;
+
+        // Extract the numeric note ID from the filename (before the extension)
+        std::string stem = filename.substr(0, filename.size() - 4); // Remove ".wav"
+        int note = 0;
+        try {
+            note = std::stoi(stem); // Convert the numeric part to an integer
+        } catch (const std::invalid_argument&) {
+            std::cerr << "Warning: Could not extract numeric ID from " << gFilename << "\n";
+            continue; // Skip files without a valid numeric ID
+        }
+
+        // Get the number of frames for the current file
+        numFrames_[note] = AudioFileUtilities::getNumFrames(gFilename);
+        printf("sample_.numFrames for %s: %d\n", gFilename.c_str(), numFrames_[note]);
+
+        // Load the left (channel 0) and right (channel 1) audio data
+        dataL_[note] = AudioFileUtilities::load(gFilename, numFrames_[note], 0)[0];
+        dataR_[note] = AudioFileUtilities::load(gFilename, numFrames_[note], 0)[0];
+        minNote_ = std::min(note, minNote_);
+        maxNote_ = std::max(note, maxNote_);
+    }
+    note_ = minNote_; // Init to min
+    printf("Num notes are: %d\n", maxNote_);
+    closedir(dir);
+
+    // Initialize the envelope generator
     envGen_ = new ADSR(fs);
 }
 
 void Sample::process(float out[2])
 {
+    if (note_ < minNote_ || note_ > maxNote_)
+        return;
+
     int state = envGen_->getState();
     if (state != state_) {
         state_ = state;
@@ -35,10 +85,12 @@ void Sample::process(float out[2])
     }
 
     float env = envGen_->process();
-    out[0] = env * dataL_[readCounter_];
-    out[1] = env * dataR_[readCounter_];
+
+    out[0] = env * dataL_.at(note_)[readCounter_];
+    out[1] = env * dataR_.at(note_)[readCounter_];
+
     readCounter_++;
-    if (readCounter_ >= numFrames_)
+    if (readCounter_ >= getNumFrames())
         readCounter_ = 0;
 
 }
@@ -49,4 +101,14 @@ void Sample::setPlaying(bool playing)
 
     if (playing)
         readCounter_ = 0;
+}
+
+void Sample::setNote(int note)
+{
+    note_ = note;
+}
+
+int Sample::getNumFrames()
+{
+    return numFrames_.at(note_);
 }

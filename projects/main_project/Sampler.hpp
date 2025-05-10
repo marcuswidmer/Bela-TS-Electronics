@@ -3,8 +3,11 @@
 
 #include "Sample.hpp"
 
+#include <libraries/Midi/Midi.h>
+#include <atomic>
+
 struct AnalogIns;
-struct MidiChannelMessage;
+class MidiChannelMessage;
 class Midi;
 class Sampler
 {
@@ -14,17 +17,17 @@ public:
     void process(float out[2]);
     void init(int fs);
     void setAnalogIns(AnalogIns ins);
+    void playNewVoice();
+    void releaseVoice();
+    int getMidiNoteOffset() { return midiNoteOffset_; }
 
 private:
-    void playNewSample();
-    void releaseCurrentSample();
-    void midiMessageCallback(MidiChannelMessage message, void* arg) {
-
-    int currentSampleIdx_ = 0;
+    int currentVoiceIdx_ = 0;
 	float amplitude_ = 0.0f;
-    bool play_ = false;
-    static const int numSamples_ = 10;
-    Sample * samples_[numSamples_];
+    static const int numVoices_ = 4;
+    static const int midiNoteOffset_ = 51;
+    std::map<int, int> activeVoices_;
+    Sample * samples_[numVoices_];
     Midi midi_;
     const char* midiPort_ = "hw:1,0,0";
 };
