@@ -1,7 +1,7 @@
 #ifndef SAMPLER_HPP
 #define SAMPLER_HPP
 
-#include "Sample.hpp"
+#include "Voice.hpp"
 
 struct AnalogIns;
 class MidiChannelMessage;
@@ -23,16 +23,17 @@ private:
     void invalidateDataSets();
 
     int currentVoiceIdx_ = 0;
-    int dataSet_ = 0;
-    int prevDataSet_ = -1;
+    int program_ = 0;
+    int prevProgram_ = -1;
 	float amplitude_ = 0.0f;
     static const int numVoices_ = 6;
     static const int midiNoteOffset_ = 39; //51 is standard
     std::multimap<int, int> activeVoices_;
-    Sample * samples_[numVoices_];
+    Voice * voices_[numVoices_];
     Midi * midi_;
     DataSet ds_;
     DataSet secondDs_;
+    DataSet droneDs_;
     const char* midiPort_ = "hw:1,0,0";
 };
 

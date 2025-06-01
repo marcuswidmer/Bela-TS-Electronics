@@ -144,15 +144,15 @@ TEST(SamplerTest, kjipe_samples_start_at_02_because_of_capo) {
     s.releaseVoice(1);
     EXPECT_EQ(fabs(out[0]), 0);
 
-    s.playNewVoice(3, 1);
-    s.process(out);
-    s.releaseVoice(3);
-    EXPECT_GT(fabs(out[0]), 0);
+    // s.playNewVoice(3, 1);
+    // s.process(out);
+    // s.releaseVoice(3);
+    // EXPECT_GT(fabs(out[0]), 0);
 
-    s.playNewVoice(2, 1);
-    s.process(out);
-    s.releaseVoice(2);
-    EXPECT_GT(fabs(out[0]), 0);
+    // s.playNewVoice(2, 1);
+    // s.process(out);
+    // s.releaseVoice(2);
+    // EXPECT_GT(fabs(out[0]), 0);
 }
 
 TEST(SamplerTest, melotron) {

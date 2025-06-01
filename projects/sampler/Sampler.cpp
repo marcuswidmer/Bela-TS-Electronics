@@ -1,7 +1,7 @@
 #include "Sampler.hpp"
 #include "../main_project/mainCommon.hpp"
 #include "../mainCommon.hpp"
-#include "Sample.hpp"
+#include "Voice.hpp"
 
 #include <libraries/AudioFile/AudioFile.h>
 #include <libraries/Midi/Midi.h>
@@ -30,7 +30,7 @@ void midiMessageCallback(MidiChannelMessage message, void* arg)
 }
 #endif
 
-Sampler::Sampler() : ds_(), secondDs_()
+Sampler::Sampler() : ds_(), secondDs_(), droneDs_({.loopSamples = true})
 {
     #ifndef USE_NO_MIDI
         midi_ = new Midi();
@@ -40,8 +40,8 @@ Sampler::Sampler() : ds_(), secondDs_()
 void Sampler::init(int fs)
 {
     for (int i = 0; i < numVoices_; ++i) {
-        samples_[i] = new Sample(&ds_, &secondDs_);
-        samples_[i]->init(fs);
+        voices_[i] = new Voice(&ds_, &secondDs_, &droneDs_);
+        voices_[i]->init(fs);
     }
 
 #ifndef USE_NO_MIDI
@@ -60,7 +60,7 @@ void Sampler::process(float out[2])
     out[1] = 0.0f;
 
     for (int i = 0; i < numVoices_; ++i) {
-        samples_[i]->process(out_tmp);
+        voices_[i]->process(out_tmp);
         out[0] += amplitude_ * out_tmp[0];
         out[1] += amplitude_ * out_tmp[1];
     }
@@ -75,8 +75,8 @@ void Sampler::playNewVoice(int note, float velocity)
     if (currentVoiceIdx_ >= numVoices_)
         currentVoiceIdx_ = 0;
 
-    samples_[currentVoiceIdx_]->setNote(note);
-    samples_[currentVoiceIdx_]->setPlaying(true, velocity);
+    voices_[currentVoiceIdx_]->setNote(note);
+    voices_[currentVoiceIdx_]->setPlaying(true, velocity);
     activeVoices_.insert({note, currentVoiceIdx_});
 }
 
@@ -91,23 +91,24 @@ void Sampler::releaseVoice(int note)
 
     auto voicesWithNote = activeVoices_.equal_range(note);
     auto it = voicesWithNote.first;
-    samples_[it->second]->setPlaying(false);
+    voices_[it->second]->setPlaying(false);
     activeVoices_.erase(it);
 }
 
 void Sampler::setAnalogIns(AnalogIns ins)
 {
     if (ins.input_0 < PROGRAM_LEVEL_1 / 2)
-        dataSet_ = 0;
+        program_ = 0;
     else if (ins.input_0 >= PROGRAM_LEVEL_1 - (PROGRAM_LEVEL_1 / 2) && ins.input_0 < PROGRAM_LEVEL_2 - (PROGRAM_LEVEL_1 / 2))
-        dataSet_ = 1;
+        program_ = 1;
     else if (ins.input_0 >= PROGRAM_LEVEL_2 - (PROGRAM_LEVEL_1 / 2) && ins.input_0 < PROGRAM_LEVEL_3 - (PROGRAM_LEVEL_1 / 2))
-        dataSet_ = 2;
+        program_ = 2;
     else if (ins.input_0 >= PROGRAM_LEVEL_3 - (PROGRAM_LEVEL_1 / 2))
-        dataSet_ = 3;
+        program_ = 3;
 
-    if (dataSet_ != prevDataSet_) {
-        switch(dataSet_) {
+    if (program_ != prevProgram_) {
+        invalidateDataSets();
+        switch(program_) {
             case 0:
                 loadDataSet("samples/output_notes", ds_);
                 break;
@@ -116,16 +117,17 @@ void Sampler::setAnalogIns(AnalogIns ins)
                 break;
             case 2:
                 loadDataSet("samples/kjipe", ds_);
+                loadDataSet("samples/pling_plong_loop", droneDs_, true);
                 break;
             case 3:
+                // TODO: These samples are exported as 48kHz fs
                 loadDataSet("samples/violin_melotron", ds_, true);
                 loadDataSet("samples/flute_melotron", secondDs_, true);
                 break;
             default:
-                invalidateDataSets();
                 break;
         }
-        prevDataSet_ = dataSet_;
+        prevProgram_ = program_;
     }
 
     amplitude_ = ins.input_1;
@@ -135,6 +137,7 @@ void Sampler::invalidateDataSets()
 {
     ds_.valid = false;
     secondDs_.valid = false;
+    droneDs_.valid = false;
 }
 
 void Sampler::loadDataSet(std::string path, DataSet & ds, bool stereo)
@@ -148,7 +151,7 @@ void Sampler::loadDataSet(std::string path, DataSet & ds, bool stereo)
     ds.minNote = 1000;
     ds.maxNote = 0;
     ds.valid = false;
-
+    printf("loading %s\n", path.c_str());
     struct dirent* entry;
     while ((entry = readdir(dir)) != nullptr) {
         if (entry->d_name[0] == '.') {
@@ -174,7 +177,7 @@ void Sampler::loadDataSet(std::string path, DataSet & ds, bool stereo)
         }
 
         ds.numFrames[note] = AudioFileUtilities::getNumFrames(gFilename);
-        printf("sample_.numFrames for %s: %d\n", gFilename.c_str(), ds.numFrames[note]);
+        //printf("sample_.numFrames for %s: %d\n", gFilename.c_str(), ds.numFrames[note]);
 
         if (stereo) {
             ds.dataL[note] = AudioFileUtilities::load(gFilename, ds.numFrames[note], 0)[0];
@@ -193,6 +196,6 @@ void Sampler::loadDataSet(std::string path, DataSet & ds, bool stereo)
     ds.valid = true;
 
     for (int i = 0; i < numVoices_; ++i) {
-        samples_[i]->setNote(0);
+        voices_[i]->setNote(0);
     }
 }
