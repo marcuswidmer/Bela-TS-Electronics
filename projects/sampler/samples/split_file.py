@@ -91,7 +91,7 @@ def split_notes_auto(input_wav, output_directory, start_note="F1", silence_thres
 
 # Example usage
 if __name__ == "__main__":
-    input_wav_path = "../../flute_bip.wav"       # Replace with the path to your input WAV file
+    input_wav_path = "../../flute_bip_1_ampl.wav"       # Replace with the path to your input WAV file
     output_dir = "flute_melotron"        # Replace with your desired output directory
     start_note = "E0"                  # Replace with the starting note, if different (e.g., "C1")
     start_number = 1                 # Numbering starts from 14

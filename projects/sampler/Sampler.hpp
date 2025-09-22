@@ -3,6 +3,8 @@
 
 #include "Voice.hpp"
 
+#include <random>
+
 struct AnalogIns;
 class MidiChannelMessage;
 class Midi;
@@ -17,16 +19,25 @@ public:
     void playNewVoice(int note, float velocity);
     void releaseVoice(int note);
     int getMidiNoteOffset() { return midiNoteOffset_; }
+    int convertToProgram(float analogIn);
+    float convertFromProgram(int program);
+    int getProgram() { return program_; };
+    void setRelease(float r);
 
 private:
     void loadDataSet(std::string path, DataSet & ds, bool stereo = false);
     void invalidateDataSets();
+    void playNewDroneVoice(int note);
 
     int currentVoiceIdx_ = 0;
     int program_ = 0;
     int prevProgram_ = -1;
 	float amplitude_ = 0.0f;
-    static const int numVoices_ = 6;
+    float firstSecondMix_ = 0.0f;
+    float droneAmpl_ = 0.0f;
+    static const int numRegVoices_ = 6;
+    static const int numDroneVoices_ = 1;
+    static const int numVoices_ = numRegVoices_ + numDroneVoices_;
     static const int midiNoteOffset_ = 39; //51 is standard
     std::multimap<int, int> activeVoices_;
     Voice * voices_[numVoices_];
@@ -35,6 +46,8 @@ private:
     DataSet secondDs_;
     DataSet droneDs_;
     const char* midiPort_ = "hw:1,0,0";
+    bool play_ = false;
+    int testNote_ = 0;
 };
 
 

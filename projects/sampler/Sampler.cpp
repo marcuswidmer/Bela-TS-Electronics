@@ -9,6 +9,7 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <iostream>
+#include <random>
 
 #ifndef USE_NO_MIDI
 void midiMessageCallback(MidiChannelMessage message, void* arg)
@@ -39,8 +40,13 @@ Sampler::Sampler() : ds_(), secondDs_(), droneDs_({.loopSamples = true})
 
 void Sampler::init(int fs)
 {
-    for (int i = 0; i < numVoices_; ++i) {
-        voices_[i] = new Voice(&ds_, &secondDs_, &droneDs_);
+    for (int i = 0; i < numRegVoices_; ++i) {
+        voices_[i] = new Voice(&ds_, &secondDs_);
+        voices_[i]->init(fs);
+    }
+
+    for (int i = numRegVoices_; i < numVoices_; ++i) {
+        voices_[i] = new Voice(&droneDs_, &secondDs_);
         voices_[i]->init(fs);
     }
 
@@ -53,16 +59,20 @@ void Sampler::init(int fs)
 
 void Sampler::process(float out[2])
 {
-    float out_tmp[2];
-    out_tmp[0] = 0.0f;
-    out_tmp[1] = 0.0f;
+    float out_tmp[2] = {};
     out[0] = 0.0f;
     out[1] = 0.0f;
 
-    for (int i = 0; i < numVoices_; ++i) {
-        voices_[i]->process(out_tmp);
+    for (int i = 0; i < numRegVoices_; ++i) {
+        voices_[i]->process(out_tmp, firstSecondMix_);
         out[0] += amplitude_ * out_tmp[0];
         out[1] += amplitude_ * out_tmp[1];
+    }
+
+    for (int i = numRegVoices_; i < numVoices_; ++i) {
+        voices_[i]->process(out_tmp, firstSecondMix_);
+        out[0] += amplitude_ * droneAmpl_ * out_tmp[0];
+        out[1] += amplitude_ * droneAmpl_ * out_tmp[1];
     }
 }
 
@@ -72,12 +82,23 @@ void Sampler::playNewVoice(int note, float velocity)
         return;
 
     currentVoiceIdx_++;
-    if (currentVoiceIdx_ >= numVoices_)
+    if (currentVoiceIdx_ >= numRegVoices_)
         currentVoiceIdx_ = 0;
 
     voices_[currentVoiceIdx_]->setNote(note);
     voices_[currentVoiceIdx_]->setPlaying(true, velocity);
     activeVoices_.insert({note, currentVoiceIdx_});
+}
+
+void Sampler::playNewDroneVoice(int note)
+{
+    if (!droneDs_.valid)
+        return;
+
+    int droneVoiceIdx = numRegVoices_;
+
+    voices_[droneVoiceIdx]->setNote(note);
+    voices_[droneVoiceIdx]->setPlaying(true, 1.0f);
 }
 
 void Sampler::releaseVoice(int note)
@@ -97,14 +118,7 @@ void Sampler::releaseVoice(int note)
 
 void Sampler::setAnalogIns(AnalogIns ins)
 {
-    if (ins.input_0 < PROGRAM_LEVEL_1 / 2)
-        program_ = 0;
-    else if (ins.input_0 >= PROGRAM_LEVEL_1 - (PROGRAM_LEVEL_1 / 2) && ins.input_0 < PROGRAM_LEVEL_2 - (PROGRAM_LEVEL_1 / 2))
-        program_ = 1;
-    else if (ins.input_0 >= PROGRAM_LEVEL_2 - (PROGRAM_LEVEL_1 / 2) && ins.input_0 < PROGRAM_LEVEL_3 - (PROGRAM_LEVEL_1 / 2))
-        program_ = 2;
-    else if (ins.input_0 >= PROGRAM_LEVEL_3 - (PROGRAM_LEVEL_1 / 2))
-        program_ = 3;
+    program_ = convertToProgram(ins.input_0);
 
     if (program_ != prevProgram_) {
         invalidateDataSets();
@@ -118,6 +132,7 @@ void Sampler::setAnalogIns(AnalogIns ins)
             case 2:
                 loadDataSet("samples/kjipe", ds_);
                 loadDataSet("samples/pling_plong_loop", droneDs_, true);
+                playNewDroneVoice(1);
                 break;
             case 3:
                 // TODO: These samples are exported as 48kHz fs
@@ -130,7 +145,27 @@ void Sampler::setAnalogIns(AnalogIns ins)
         prevProgram_ = program_;
     }
 
-    amplitude_ = ins.input_1;
+    amplitude_ = ins.input_1 / POT_COMP_FACTOR;
+    firstSecondMix_ = ins.input_2 / POT_COMP_FACTOR;
+    droneAmpl_ = ins.input_3 / POT_COMP_FACTOR;
+
+    bool play = ins.input_7 > 0.42;
+    if (play != play_)
+    {
+        if (play) {
+            // std::random_device rd;
+            // std::mt19937 gen(rd());
+            // std::uniform_int_distribution<> dist(ds_.minNote, ds_.maxNote);
+            testNote_++;
+            if (testNote_ > ds_.maxNote)
+                testNote_ = ds_.minNote;
+            playNewVoice(testNote_, 1.0f);
+        }
+        else {
+            releaseVoice(testNote_);
+        }
+        play_ = play;
+    }
 }
 
 void Sampler::invalidateDataSets()
@@ -194,8 +229,37 @@ void Sampler::loadDataSet(std::string path, DataSet & ds, bool stereo)
     closedir(dir);
 
     ds.valid = true;
+    testNote_ = ds_.minNote;
 
     for (int i = 0; i < numVoices_; ++i) {
         voices_[i]->setNote(0);
     }
+}
+
+int Sampler::convertToProgram(float analogIn)
+{
+    if (analogIn < PROGRAM_LEVEL_1 / 2)
+        return 3;
+    else if (analogIn >= PROGRAM_LEVEL_1 - (PROGRAM_LEVEL_1 / 2) && analogIn < PROGRAM_LEVEL_2 - (PROGRAM_LEVEL_1 / 2))
+        return 2;
+    else if (analogIn >= PROGRAM_LEVEL_2 - (PROGRAM_LEVEL_1 / 2) && analogIn < PROGRAM_LEVEL_3 - (PROGRAM_LEVEL_1 / 2))
+        return 1;
+    else if (analogIn >= PROGRAM_LEVEL_3 - (PROGRAM_LEVEL_1 / 2))
+        return 0;
+    return 3;
+}
+
+float Sampler::convertFromProgram(int program)
+{
+    for (int i = 0; i < 100; ++i) {
+       if (convertToProgram(1.0f / i) == program)
+        return 1.0f / i;
+    }
+    return -1.0f;
+}
+
+void Sampler::setRelease(float r)
+{
+    for (int i = 0; i < numVoices_; ++i)
+        voices_[i]->setRelease(r);
 }

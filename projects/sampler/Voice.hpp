@@ -25,15 +25,15 @@ struct DataSet {
 class Voice
 {
 public:
-    Voice(DataSet * ds, DataSet * secondDs, DataSet * droneDs);
+    Voice(DataSet * ds, DataSet * secondDs);
     ~Voice();
 
-    void process(float out[2]);
+    void process(float out[2], float firstSecondMix);
     void processDataSet(float out[2], DataSet * ds);
-    void processDataSet(float out[2], DataSet * ds, int note);
     void setPlaying(bool playing, float velocity = 0.0f);
     void init(int fs);
     void setNote(int note);
+    void setRelease(float r);
 
 private:
     int getNumFrames();
@@ -45,7 +45,6 @@ private:
     float velocity_ = 0.0f;
     DataSet * ds_;
     DataSet * secondDs_;
-    DataSet * droneDs_;
 };
 
 

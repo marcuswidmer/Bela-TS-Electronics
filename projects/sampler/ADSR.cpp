@@ -27,32 +27,32 @@
 ADSR::ADSR(float sampleRate) {
   reset();
   this->sampleRate = sampleRate;
-  setADSR(127, 10, 126, 5);
-  int attackTimeMs = 1 / (sampleRate * attackCoef) * 1000;
-  int decayTimeMs = 1 / (sampleRate * decayCoef) * 1000;
-  int releaseTimeMs = 1 / (sampleRate * releaseCoef) * 1000;
-  printf("Attack (ms): %d , Decay (ms): %d, Sustain (level): %lf, Release (ms): %d\n", attackTimeMs, decayTimeMs, sustainLevel, releaseTimeMs);
+  setADSR(1.0, 0.1, 0.9999, 0.03);
+  float attackTimeMs = 1 / (sampleRate * attackCoef) * 1000;
+  float decayTimeMs = 1 / (sampleRate * decayCoef) * 1000;
+  float releaseTimeMs = 1 / (sampleRate * releaseCoef) * 1000;
+  printf("Attack (ms): %f , Decay (ms): %f, Sustain (level): %lf, Release (ms): %f\n", attackTimeMs, decayTimeMs, sustainLevel, releaseTimeMs);
 }
 
 ADSR::~ADSR(void) {
 }
 
-void ADSR::setADSR(int8_t attack, int8_t decay, int8_t sustain, int8_t release)
+void ADSR::setADSR(float attack, float decay, float sustain, float release)
 {
-  setSustainMidi(sustain);
-  setAttackMidi(attack);
-  setDecayMidi(decay);
-  setReleaseMidi(release);
+  setSustain(sustain);
+  setAttack(attack);
+  setDecay(decay);
+  setRelease(release);
 }
 void ADSR::setAttack(float attack) {
 
   this->attack = attack;
   if (attack < 0.001)
   {
-    attack = 0.001;
+      attack = 0.001;
   }
 
-  attackCoef = 1.0/attack;
+  attackCoef = 1.0 / attack;
   attackBase = 0.0;
 
 }
@@ -74,66 +74,11 @@ void ADSR::setSustain(float level) {
 void ADSR::setRelease(float releaseval)
 {
   release = releaseval;
+  double maxLength = sampleRate * 5;
   if (release < 0.001)
   {
     release = 0.001;
   }
-  releaseCoef = (this->sustainLevel / this->release);
-  releaseBase = this->sustainLevel;
-}
-
-void ADSR::setAttackMidi(int8_t attack)
-{
-  this->midiAttack=attack;
-  this->attack = ((float)midiAttack)/127.0;
-  double maxlength = 0.01 * sampleRate;
-  if(midiAttack==0)
-  {
-    attackCoef = 1.0;
-  }
-  else
-  {
-    attackCoef = 127.0 /(maxlength*(double)midiAttack);
-  }
-  attackBase = 0.0;
-
-}
-void ADSR::setDecayMidi(int8_t decay)
-{
-  this->midiDecay=decay;
-  this->decay = ((float)this->midiDecay)/127.0;
-  double maxlength = 1.0*sampleRate;
-  if(midiDecay==0)
-  {
-    decayCoef=1.0 - this->sustainLevel;
-  }
-  else
-  {
-    decayCoef = ((1.0 - this->sustainLevel)*127.0) / (maxlength*(float)midiDecay);
-  }
-}
-
-void ADSR::setSustainMidi(int8_t sustain)
-{
-  this->midiSustain=sustain;
-  this->sustainLevel = ((float)midiSustain)/127.0;
-  decayBase = sustainLevel;
-}
-
-void ADSR::setReleaseMidi(int8_t release)
-{
-  this->midiRelease=release;
-  this->release = ((float)this->midiRelease)/127.0;
-  double maxlength = sampleRate*5.0;
-
-  if(midiRelease==0)
-  {
-    releaseCoef=this->sustainLevel;
-  }
-  else
-  {
-    releaseCoef = (this->sustainLevel*127.0) / (maxlength*((double)midiRelease));
-    //releaseCoef = ((this->sustainLevel * 127.0)/maxlength)/(float)midiRelease;
-  }
+  releaseCoef = this->sustainLevel / (maxLength * this->release);
   releaseBase = this->sustainLevel;
 }

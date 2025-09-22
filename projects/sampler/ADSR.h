@@ -31,7 +31,7 @@ public:
 	float process(void);
   float getOutput(void);
   int getState(void);
-	void setADSR(int8_t attack, int8_t decay, int8_t sustain, int8_t release);
+	void setADSR(float attack, float decay, float sustain, float release);
 	void gate(int on);
   void setAttack(float attack);
   void setDecay(float decay);
@@ -42,14 +42,6 @@ public:
   float getSustain(){return sustainLevel;}
   float getRelease(){return release;}
   void reset(void);
-  void setAttackMidi(int8_t attack);
-  void setDecayMidi(int8_t decay);
-  void setSustainMidi(int8_t sustain);
-  void setReleaseMidi(int8_t release);
-  int8_t getAttackMidi(){return midiAttack;}
-  int8_t getDecayMidi(){return midiDecay;}
-  int8_t getSustainMidi(){return midiSustain;}
-  int8_t getReleaseMidi(){return midiRelease;}
   double getAttackCoef(){return attackCoef;}
   double getDecayCoef(){return decayCoef;}
   double getReleaseCoef(){return releaseCoef;}
@@ -78,10 +70,6 @@ protected:
   double attackBase;
   double decayBase;
   double releaseBase;
-  int8_t midiAttack;
-  int8_t midiDecay;
-  int8_t midiSustain;
-  int8_t midiRelease;
   float sampleRate;
 };
 

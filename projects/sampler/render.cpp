@@ -37,8 +37,10 @@ bool setup(BelaContext *context, void *userData)
 
     gInverseSampleRate = 1.0 / context->audioSampleRate;
 
-    if(context->audioFrames)
-        gAudioFramesPerAnalogFrame = context->audioFrames / context->analogFrames;
+    // if(context->audioFrames)
+    //     gAudioFramesPerAnalogFrame = context->audioFrames / context->analogFrames;
+
+    gAudioFramesPerAnalogFrame = 16;
 
     snd_pcm_hw_params_t *p_params;
     snd_pcm_hw_params_alloca(&p_params);
