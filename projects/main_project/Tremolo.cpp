@@ -43,16 +43,16 @@ void Tremolo::init()
         float T_P = d / (float)(TREMOLO_NUM_DUTY - 1);
 
         for (int n = 0; n < TREMOLO_LENGTH_WAVEFORM; n++) {
-            float sumHarmonics = A * T_P / T; // The sum up to "h" harmonics.
-            envs[d][0][n] = sumHarmonics;
+            float sumHarmonics = A * T_P / T; // The sum up to "h" harmonics. 
+            envs[d][0][n] = sumHarmonics; 
 
             for (int h = 1; h < TREMOLO_NUM_HARMONICS; h++) {
                 float t = -T / 2 + n / (float)(TREMOLO_LENGTH_WAVEFORM - 1) * T;
                 float sample = 2 * A / (h * M_PI) * sinf(h * M_PI * T_P / T) * cosf(h * 2.0f * M_PI / T * t);
-
-                sumHarmonics += sample;
-                envs[d][h][n] = sumHarmonics;
-            }
+                
+                sumHarmonics += sample; 
+                envs[d][h][n] = sumHarmonics; 
+            }        
         }
     }
 }
