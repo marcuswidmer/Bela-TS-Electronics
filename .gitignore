@@ -25,3 +25,4 @@ uploads/
 tmp/
 CustomMakefileTop.in
 CustomMakefileBottom.in
+projects/sampler/samples

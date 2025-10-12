@@ -7,6 +7,8 @@
 #include <memory>
 #include <map>
 
+//#define USE_NO_MIDI
+
 class ADSR;
 
 class Sample
@@ -16,24 +18,23 @@ public:
     ~Sample();
 
     void process(float out[2]);
-    void setPlaying(bool playing);
+    void setPlaying(bool playing, float velocity = 0.0f);
     void init(int fs);
     void setNote(int note);
-
-
 
 private:
     int getNumFrames();
 
     int readCounter_ = 0;
-    std::map<int, std::vector<float>> dataL_;
-    std::map<int, std::vector<float>> dataR_;
+    std::map<int, std::vector<float> > dataL_;
+    std::map<int, std::vector<float> > dataR_;
     std::map<int, int> numFrames_;
     ADSR * envGen_ = nullptr;
     int state_ = 0;
     int note_ = 0;
     int maxNote_ = 0;
     int minNote_ = 1000;
+    float velocity_ = 0.0f;
 };
 
 

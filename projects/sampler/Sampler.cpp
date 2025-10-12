@@ -18,15 +18,15 @@ void midiMessageCallback(MidiChannelMessage message, void* arg)
 	if (message.getType() == kmmNoteOn || (message.getType() == kmmNoteOff)) {
 		if (message.getType() == kmmNoteOn) {
             sampler->playNewVoice(message.getDataByte(0) - sampler->getMidiNoteOffset(), message.getDataByte(1) / 128.0f);
-			//rt_printf("note on: %d. Vel: %d\n", message.getDataByte(0),message.getDataByte(1));
+			rt_printf("note on: %d. Vel: %d\n", message.getDataByte(0),message.getDataByte(1));
 
         } else if (message.getType() == kmmNoteOff) {
             sampler->releaseVoice(message.getDataByte(0) - sampler->getMidiNoteOffset());
-			//rt_printf("note off: %d\n", message.getDataByte(0));
+			rt_printf("note off: %d\n", message.getDataByte(0));
 		}
 
 	} else if (message.getType() == kmmControlChange) {
-        //rt_printf("control change\n");
+        rt_printf("control change\n");
     }
 }
 #endif
@@ -124,10 +124,12 @@ void Sampler::setAnalogIns(AnalogIns ins)
         invalidateDataSets();
         switch(program_) {
             case 0:
-                loadDataSet("samples/output_notes", ds_);
+                loadDataSet("samples/ufordragelig_trommer", droneDs_, true);
+                playNewDroneVoice(1);
                 break;
             case 1:
-                loadDataSet("samples/output_notes_2", ds_);
+                loadDataSet("samples/miami_skate_boy_trommer", droneDs_, true);
+                playNewDroneVoice(1);
                 break;
             case 2:
                 loadDataSet("samples/kjipe", ds_);

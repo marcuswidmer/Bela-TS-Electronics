@@ -1,29 +1,34 @@
 #include "Sampler.hpp"
 #include "../main_project/mainCommon.hpp"
 
-#include <Bela.h>
 #include <libraries/Midi/Midi.h>
+#include <Bela.h>
 
+#ifndef USE_NO_MIDI
 void midiMessageCallback(MidiChannelMessage message, void* arg)
 {
     auto * sampler = static_cast<Sampler *>(arg);
 	if (message.getType() == kmmNoteOn || (message.getType() == kmmNoteOff)) {
 		if (message.getType() == kmmNoteOn) {
-			rt_printf("note on: %d\n", message.getDataByte(0));
-            sampler->setNote(message.getDataByte(0) - sampler->getMidiNoteOffset());
-            sampler->playNewVoice();
+            sampler->playNewVoice(message.getDataByte(0) - sampler->getMidiNoteOffset(), message.getDataByte(1) / 128.0f);
+			//rt_printf("note on: %d. Vel: %d\n", message.getDataByte(0),message.getDataByte(1));
 
         } else if (message.getType() == kmmNoteOff) {
-			rt_printf("note off: %d\n", message.getDataByte(0) - sampler->getMidiNoteOffset());
+            sampler->releaseVoice(message.getDataByte(0) - sampler->getMidiNoteOffset());
+			//rt_printf("note off: %d\n", message.getDataByte(0));
 		}
 
 	} else if (message.getType() == kmmControlChange) {
-        rt_printf("control change\n");
+        //rt_printf("control change\n");
     }
 }
+#endif
 
-Sampler::Sampler() : midi_()
+Sampler::Sampler()
 {
+    #ifndef USE_NO_MIDI
+        midi_ = new Midi();
+    #endif
 }
 
 void Sampler::init(int fs)
@@ -33,10 +38,12 @@ void Sampler::init(int fs)
         samples_[i]->init(fs);
     }
 
-    midi_.readFrom(midiPort_);
-	//midi_.writeTo(midiPort_);
-	midi_.enableParser(true);
-	midi_.getParser()->setCallback(midiMessageCallback, (void*) this);
+#ifndef USE_NO_MIDI
+    midi_->readFrom(midiPort_);
+	//midi_->writeTo(midiPort_);
+	midi_->enableParser(true);
+	midi_->getParser()->setCallback(midiMessageCallback, (void*) this);
+#endif
 }
 
 void Sampler::process(float out[2])
@@ -52,25 +59,28 @@ void Sampler::process(float out[2])
     }
 }
 
-void Sampler::playNewVoice(int note)
+void Sampler::playNewVoice(int note, float velocity)
 {
     currentVoiceIdx_++;
     if (currentVoiceIdx_ >= numVoices_)
         currentVoiceIdx_ = 0;
 
     samples_[currentVoiceIdx_]->setNote(note);
-    samples_[currentVoiceIdx_]->setPlaying(true);
-    activeVoices_[note] = currentVoiceIdx_;
+    samples_[currentVoiceIdx_]->setPlaying(true, velocity);
+    activeVoices_.insert({note, currentVoiceIdx_});
 }
 
 void Sampler::releaseVoice(int note)
 {
-    if (!activeVoices_.contains(note)) {
-        printf("Inactive voice released. This should not happen\n");
+    if (!activeVoices_.count(note)) {
+        rt_printf("Inactive voice released. This should not happen\n");
         return;
     }
 
-    samples_[activeVoices_.at(note)]->setPlaying(false);
+    auto voicesWithNote = activeVoices_.equal_range(note);
+    auto it = voicesWithNote.first;
+    samples_[it->second]->setPlaying(false);
+    activeVoices_.erase(it);
 }
 
 void Sampler::setAnalogIns(AnalogIns ins)

@@ -69,7 +69,6 @@ void Sample::init(int fs)
     printf("Num notes are: %d\n", maxNote_);
     closedir(dir);
 
-    // Initialize the envelope generator
     envGen_ = new ADSR(fs);
 }
 
@@ -81,26 +80,29 @@ void Sample::process(float out[2])
     int state = envGen_->getState();
     if (state != state_) {
         state_ = state;
-        printf("ADSR state: %d\n", state);
+        //printf("ADSR state: %d\n", state);
     }
 
     float env = envGen_->process();
 
-    out[0] = env * dataL_.at(note_)[readCounter_];
-    out[1] = env * dataR_.at(note_)[readCounter_];
+    out[0] = velocity_ * env * dataL_.at(note_)[readCounter_];
+    out[1] = velocity_ * env * dataR_.at(note_)[readCounter_];
 
-    readCounter_++;
-    if (readCounter_ >= getNumFrames())
-        readCounter_ = 0;
+    if (readCounter_ < getNumFrames())
+        readCounter_++;
+    else
+        setPlaying(false);
 
 }
 
-void Sample::setPlaying(bool playing)
+void Sample::setPlaying(bool playing, float velocity)
 {
     envGen_->gate(playing);
 
-    if (playing)
+    if (playing) {
         readCounter_ = 0;
+        velocity_ = velocity;
+    }
 }
 
 void Sample::setNote(int note)

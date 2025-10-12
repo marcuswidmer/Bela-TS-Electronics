@@ -27,7 +27,7 @@
 ADSR::ADSR(float sampleRate) {
   reset();
   this->sampleRate = sampleRate;
-  setADSR(127, 10, 126, 100);
+  setADSR(127, 10, 126, 5);
   int attackTimeMs = 1 / (sampleRate * attackCoef) * 1000;
   int decayTimeMs = 1 / (sampleRate * decayCoef) * 1000;
   int releaseTimeMs = 1 / (sampleRate * releaseCoef) * 1000;

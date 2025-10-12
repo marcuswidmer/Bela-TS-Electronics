@@ -3,7 +3,7 @@
 [ -f ~/.belarc ] && . ~/.belarc
 
 [ -z "$BBB_USER" ] && BBB_USER="root"
-[ -z "$BBB_HOSTNAME" ] && BBB_HOSTNAME="192.168.6.2" # this is also used below when trying to clear the cached ssh key
+[ -z "$BBB_HOSTNAME" ] && BBB_HOSTNAME="bela.local" # this is also used below when trying to clear the cached ssh key
 [ -z "$BBB_ADDRESS" ] && BBB_ADDRESS="$BBB_USER@$BBB_HOSTNAME"
 [ -z "$BBB_BELA_HOME" ] && BBB_BELA_HOME="/root/Bela"
 [ -z "$RUN_PROJECT" ] && RUN_PROJECT=1
@@ -25,7 +25,7 @@ copy_if_does_not_exist(){
 	if [ "$_FORCE" -eq 0 ]
 	then
 		if [ $RSYNC_AVAILABLE -eq 1 ]
-		then 
+		then
 			rsync -a --ignore-existing $_SRC $BBB_ADDRESS:$_DEST
 		else
 			ssh $BBB_ADDRESS ls $_DEST &> /dev/null ||\
@@ -50,7 +50,7 @@ check_rsync(){
 folder_has_changed(){
 	[ -z "$2" ] && { echo "Error: folder_has_changed(folder, reference, [filter])"; return 1; }
 	[ -z "$3" ] && FILTER="." || FILTER="$3"
-	# Do not watch hidden files or folders 
+	# Do not watch hidden files or folders
 	REALPATH=$(cd "$1" && pwd)
 	find "$REALPATH" -type f -not -path '*/\.*' -newer "$2" | grep "$FILTER"
 	return $?
@@ -61,7 +61,7 @@ wait_for_change(){
 	[ -z "$4" ] && SLEEP=$DEFAULT_SLEEP_WHEN_WATCHING || SLEEP="$4"
 	while ! folder_has_changed "$1" "$2" "$3"
 	do
-		sleep $SLEEP;	
+		sleep $SLEEP;
 	done
 }
 
@@ -148,7 +148,7 @@ interactive(){
 		else
 			case $REPLY in
 			#check it is a string
-			''|*[!0-9]*) 
+			''|*[!0-9]*)
 				continue
 			;;
 			*)
@@ -211,13 +211,13 @@ run_script_usage(){
 	-f arg : runs in the foreground (default).
 	-b arg : runs in the background (no output is shown)
 
-	When running in the foreground you can stop the currently running program 
+	When running in the foreground you can stop the currently running program
 	with ctrl-C.
 	When running in the background, you can use \`./stop_running.sh' to stop
 	the current process and \`./connect_to_project.sh' to see the program's output.
 
 "
-# UNDOCUMENTED OPTION -s runs in a screen in the foreground 
+# UNDOCUMENTED OPTION -s runs in a screen in the foreground
 }
 
 build_script_usage_brief(){
@@ -228,21 +228,21 @@ build_script_usage(){
 echo "Build options:
 	--clean : cleans the pre-compiled object files on the board (same as \`-m projectclean').
 	          If the linker issues warnings during a build, or you see that your latest changes are not
-	          being applied to the running program, try to add the --clean flag for the next build and see 
-	          if that fixes it. 
-	
+	          being applied to the running program, try to add the --clean flag for the next build and see
+	          if that fixes it.
+
 	--watch: the script will wait for changes in the source folder and when it detects them it
 	         triggers a new build. If you do not run the program with -b, then you will have to
 			 either kill the process or detach from the screen in order for the watchdog to be active.
 	--force: does not prompt to overwrite an existing project. Also activates \`expert mode' which disables some checks and makes the program run faster
 	-n : the output will not be run after compiling.
-	-p arg : sets the name of the project in the remote folder 
-	         (defaults to the name of the project folder on the host) 
+	-p arg : sets the name of the project in the remote folder
+	         (defaults to the name of the project folder on the host)
 	         do not use spaces in your project names, please
 	-m \"args\" allows to pass arguments to the Makefile before the run target. For instance,
 	           pass \`-m "projectclean"' or \`-m "distclean"' to clean project-specific
 	           pre-built objects, or all the pre-built objects, respectively.
-	           Or \`-m "help"' to see all the options available. 
+	           Or \`-m "help"' to see all the options available.
 	"
 }
 
@@ -270,7 +270,7 @@ build_options{
 		-p)
 			shift;
 			BBB_PROJECT_NAME="$1";
-		;;	
+		;;
 		--clean)
 			BBB_MAKEFILE_OPTIONS="$BBB_MAKEFILE_OPTIONS projectclean";
 		;;

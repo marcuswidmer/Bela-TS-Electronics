@@ -75,8 +75,14 @@ namespace AudioFileUtilities {
 	 */
 	std::vector<float> loadMono(const std::string& file);
 };
+#ifdef USE_MAC_SNDFILE
+#include <sndfile.h>
+#endif
 
+#ifndef USE_MAC_SNDFILE
 #include <libraries/sndfile/sndfile.h>
+#endif
+
 #include <thread>
 #include <array>
 
