@@ -3,6 +3,7 @@
 
 #include "Voice.hpp"
 
+#include <functional>
 #include <random>
 
 struct AnalogIns;
@@ -14,7 +15,8 @@ public:
     Sampler();
 
     void process(float out[2]);
-    void init(int fs);
+    void init(int fs, std::function<void(float)> = nullptr);
+    void reinit();
     void setAnalogIns(AnalogIns ins);
     void playNewVoice(int note, float velocity);
     void releaseVoice(int note);
@@ -23,6 +25,9 @@ public:
     float convertFromProgram(int program);
     int getProgram() { return program_; };
     void setRelease(float r);
+    void setProgram(int program);
+    void setMainLevel(float lev);
+    void setDroneLevel(float lev);
 
 private:
     void loadDataSet(std::string path, DataSet & ds, bool stereo = false);
@@ -48,6 +53,7 @@ private:
     const char* midiPort_ = "hw:1,0,0";
     bool play_ = false;
     int testNote_ = 0;
+    std::function<void(float)> ledCb_;
 };
 
 

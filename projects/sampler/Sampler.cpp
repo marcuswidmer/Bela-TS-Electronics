@@ -3,6 +3,7 @@
 #include "../mainCommon.hpp"
 #include "Voice.hpp"
 
+#include <functional>
 #include <libraries/AudioFile/AudioFile.h>
 #include <libraries/Midi/Midi.h>
 #include <Bela.h>
@@ -38,7 +39,7 @@ Sampler::Sampler() : ds_(), secondDs_(), droneDs_({.loopSamples = true})
     #endif
 }
 
-void Sampler::init(int fs)
+void Sampler::init(int fs, std::function<void(float)> ledCb)
 {
     for (int i = 0; i < numRegVoices_; ++i) {
         voices_[i] = new Voice(&ds_, &secondDs_);
@@ -54,6 +55,19 @@ void Sampler::init(int fs)
     midi_->readFrom(midiPort_);
 	midi_->enableParser(true);
 	midi_->getParser()->setCallback(midiMessageCallback, (void*) this);
+#endif
+
+    ledCb_ = ledCb;
+}
+
+void Sampler::reinit()
+{
+#ifndef USE_NO_MIDI
+    delete midi_;
+    midi_ = new Midi();
+    midi_->readFrom(midiPort_);
+    midi_->enableParser(true);
+    midi_->getParser()->setCallback(midiMessageCallback, (void*)this);
 #endif
 }
 
@@ -116,6 +130,40 @@ void Sampler::releaseVoice(int note)
     activeVoices_.erase(it);
 }
 
+void Sampler::setProgram(int program)
+{
+    program_ = program;
+    if (program_ != prevProgram_) {
+        if (ledCb_)
+            ledCb_(0.01);
+
+        invalidateDataSets();
+        switch(program_) {
+            case 0:
+                loadDataSet("../sampler/samples/ufordragelig_trommer", droneDs_, true);
+                playNewDroneVoice(1);
+                break;
+            case 1:
+                loadDataSet("../sampler/samples/miami_skate_boy_trommer", droneDs_, true);
+                playNewDroneVoice(1);
+                break;
+            case 2:
+                loadDataSet("../sampler/samples/kjipe", ds_);
+                loadDataSet("../sampler/samples/pling_plong_loop", droneDs_, true);
+                playNewDroneVoice(1);
+                break;
+            case 3:
+                // TODO: These samples are exported as 48kHz fs
+                loadDataSet("../sampler/samples/violin_melotron", ds_, true);
+                loadDataSet("../sampler/samples/flute_melotron", secondDs_, true);
+                break;
+            default:
+                break;
+        }
+        prevProgram_ = program_;
+    }
+}
+
 void Sampler::setAnalogIns(AnalogIns ins)
 {
     program_ = convertToProgram(ins.input_0);
@@ -124,22 +172,22 @@ void Sampler::setAnalogIns(AnalogIns ins)
         invalidateDataSets();
         switch(program_) {
             case 0:
-                loadDataSet("samples/ufordragelig_trommer", droneDs_, true);
+                loadDataSet("../sampler/samples/ufordragelig_trommer", droneDs_, true);
                 playNewDroneVoice(1);
                 break;
             case 1:
-                loadDataSet("samples/miami_skate_boy_trommer", droneDs_, true);
+                loadDataSet("../sampler/samples/miami_skate_boy_trommer", droneDs_, true);
                 playNewDroneVoice(1);
                 break;
             case 2:
-                loadDataSet("samples/kjipe", ds_);
-                loadDataSet("samples/pling_plong_loop", droneDs_, true);
+                loadDataSet("../sampler/samples/kjipe", ds_);
+                loadDataSet("../sampler/samples/pling_plong_loop", droneDs_, true);
                 playNewDroneVoice(1);
                 break;
             case 3:
                 // TODO: These samples are exported as 48kHz fs
-                loadDataSet("samples/violin_melotron", ds_, true);
-                loadDataSet("samples/flute_melotron", secondDs_, true);
+                loadDataSet("../sampler/samples/violin_melotron", ds_, true);
+                loadDataSet("../sampler/samples/flute_melotron", secondDs_, true);
                 break;
             default:
                 break;
@@ -265,3 +313,14 @@ void Sampler::setRelease(float r)
     for (int i = 0; i < numVoices_; ++i)
         voices_[i]->setRelease(r);
 }
+
+void Sampler::setMainLevel(float lev)
+{
+    amplitude_ = lev;
+}
+
+void Sampler::setDroneLevel(float lev)
+{
+    droneAmpl_ = lev;
+}
+
