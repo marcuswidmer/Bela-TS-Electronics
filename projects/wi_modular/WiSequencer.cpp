@@ -2,121 +2,29 @@
 #include <cmath>
 #include <chrono>
 
-#ifndef USE_NO_MIDI
-#include <libraries/Midi/Midi.h>
-void midiMessageCallback(MidiChannelMessage message, void* arg)
-{
-    auto * wiSequencer = static_cast<WiSequencer *>(arg);
-
-	if (message.getType() == kmmNoteOn || (message.getType() == kmmNoteOff)) {
-		if (message.getType() == kmmNoteOn) {
-            int note = message.getDataByte(0);
-			rt_printf("note on: %d. Vel: %d\n", note, message.getDataByte(1));
-            wiSequencer->assignNote(note);
-        }
-
-
-        // else if (message.getType() == kmmNoteOff) {
-		// 	rt_printf("note off: %d\n", message.getDataByte(0));
-		// }
-
-	}
-    else if (message.getType() == kmmControlChange) {
-        rt_printf("control change\n");
-    }
-
-    // Your system reports MIDI clock as type == 7
-    constexpr int kMidiClockType = 7;
-
-    // MIDI clock is 24 pulses per quarter note (PPQN)
-    constexpr int kPpqn = 24;
-
-    using Clock = std::chrono::steady_clock;
-    static int clockCount = 0;
-    static Clock::time_point lastBeatTp{};
-    static bool haveLastBeat = false;
-
-    if((int)message.getType() == kMidiClockType)
-    {
-        if(++clockCount >= kPpqn)
-        {
-            clockCount = 0;
-
-            auto now = Clock::now();
-            if(haveLastBeat)
-            {
-                const std::chrono::duration<double> dt = now - lastBeatTp;
-                const double bpm = (dt.count() > 0.0) ? (60.0 / dt.count()) : 0.0;
-                rt_printf("BEAT  BPM: %.2f\n", bpm);
-            }
-            else
-            {
-                rt_printf("BEAT\n");
-                haveLastBeat = true;
-            }
-
-            lastBeatTp = now;
-        }
-        return;
-    }
-}
-#endif
-
 WiSequencer::WiSequencer()
+    : tickRequested_()
+    , rd_()
+    , gen_(rd_())
 {
-#ifndef USE_NO_MIDI
-    midi_ = new Midi();
-#endif
 }
 
-void WiSequencer::init(float fs)
+void WiSequencer::init(float fs, std::function<void(float)> ledCb)
 {
     fs_ = fs;
 
-    notes_.clear();
-    notes_.push_back(12);
-    notes_.push_back(12 + 7);      // Fifth
-    notes_.push_back(12 + 12);     // Octave
-    notes_.push_back(12 + 12 + 7); // Octave + fifth
+    notes_.assign(6, NoteInfo{0, true});
     numNotes_ = notes_.size();
+    numGroups_ = 4;
+
+    randomNotes_.assign(numGroups_, 0);
 
     // Initialize timing
     currentStep_ = 0;
     stepCountdown_ = 1;
-    lfoCycleCountdown_ = 1;
     samplesPerStep_ = 1;
-    samplesPerLfoCycle_ = 1;
 
-#ifndef USE_NO_MIDI
-    midi_->readFrom(midiPort_);
-	midi_->enableParser(true);
-	midi_->getParser()->setCallback(midiMessageCallback, (void*) this);
-#endif
-}
-
-void WiSequencer::reinit()
-{
-    notes_.clear();
-    notes_.push_back(12);
-    notes_.push_back(12 + 7);      // Fifth
-    notes_.push_back(12 + 12);     // Octave
-    notes_.push_back(12 + 12 + 7); // Octave + fifth
-    numNotes_ = notes_.size();
-
-    // Initialize timing
-    currentStep_ = 0;
-    stepCountdown_ = 1;
-    lfoCycleCountdown_ = 1;
-    samplesPerStep_ = 1;
-    samplesPerLfoCycle_ = 1;
-
-#ifndef USE_NO_MIDI
-	delete midi_;
-    midi_ = new Midi();
-    midi_->readFrom(midiPort_);
-    midi_->enableParser(true);
-    midi_->getParser()->setCallback(midiMessageCallback, (void*)this);
-#endif
+    ledCb_ = ledCb;
 }
 
 void WiSequencer::process()
@@ -124,76 +32,130 @@ void WiSequencer::process()
     if(!fs_)
         return;
 
-    if(button_ && button_ != prevButton_)
-    {
-        assignMode_ = !assignMode_;
-        if(assignMode_)
-            trigger(1);
-        else
-            trigger(0.1f);
-
-        startEraseCountdown();
-    }
-    prevButton_ = button_;
-
-    if(assignMode_)
-        processAssignMode();
-    else
-        processNormalMode();
-}
-
-void WiSequencer::processNormalMode()
-{
-    if(numNotes_ == 0) {
-        processLed();
+    if (!ledCb_) {
+#ifndef USE_NO_MIDI
+        rt_printf("led cb not set");
+#endif
         return;
     }
 
-    int newSamplesPerStep = (int)lroundf(period_ * fs_);
-    if(newSamplesPerStep < 1)
-        newSamplesPerStep = 1;
-    samplesPerStep_ = newSamplesPerStep;
-
-    if(--stepCountdown_ <= 0)
+    if(button_ && button_ != prevButton_)
     {
-        stepCountdown_ = samplesPerStep_;
-        currentStep_ = (currentStep_ + 1) % numNotes_;
-        trigger();
+        printf("Changing assign mode\n");
+        assignMode_ = !assignMode_;
+        if(assignMode_)
+            ledCb_(1);
+        else {
+            ledCb_(0.1f);
+            assignedSequence_ = false;
+            includeFractionOfDefaultSequence(0.5f);
+        }
+    }
+    prevButton_ = button_;
+
+    if (numNotes_ == 0) {
+        return;
     }
 
-    currentNote_ = notes_[currentStep_];
-    processLfo();
-    processLed();
-}
+    if (assignCountdown_ > 0)
+        assignCountdown_--;
 
-void WiSequencer::processLfo()
-{
-    int newSamplesPerCycle = (int)lroundf(lfoPeriod_ * fs_);
-    if (newSamplesPerCycle < 1)
-        newSamplesPerCycle = 1;
-    samplesPerLfoCycle_ = newSamplesPerCycle;
+    if (midiClock_) {
+        if (tickRequested_) {
+            currentStep_ = getNextStep();
+            ledCb_(0.01);
+            tickRequested_ = false;
+        }
+    } else {
+        int newSamplesPerStep = (int)lroundf(period_ * fs_);
+        if(newSamplesPerStep < 1)
+            newSamplesPerStep = 1;
+        samplesPerStep_ = newSamplesPerStep;
 
-    lfo_ = lfoAmp_ * (sin(lfoCycleCountdown_ / samplesPerLfoCycle_ * 2 * M_PI) + 1.0f) / 2.0f;
-
-    lfoCycleCountdown_--;
-    if (lfoCycleCountdown_ <= 0)
-        lfoCycleCountdown_ = samplesPerLfoCycle_;
-}
-
-void WiSequencer::processAssignMode()
-{
-    if(button_ && eraseCountdown_ > 0)
-        eraseCountdown_--;
-
-    if(eraseCountdown_ == 1)
-    {
-        notes_.clear();
-        numNotes_ = 0;
-        currentStep_ = 0;
-        stepCountdown_ = 1;
+        if(--stepCountdown_ <= 0)
+        {
+            stepCountdown_ = samplesPerStep_;
+            currentStep_ = getNextStep();
+            ledCb_(0.01);
+        }
     }
 
-    processLed();
+    currentNote_ = notes_[currentStep_].note;
+}
+
+void WiSequencer::tick()
+{
+    midiClock_ = true;
+    tickRequested_ = true;
+}
+
+void WiSequencer::setRandomSequence(bool rand)
+{
+    if (randomSequence_ != rand) {
+        std::uniform_int_distribution<> randomNote(0, numGroups_ - 1);
+        for (int i = 0; i < numGroups_; ++i)
+            randomNotes_[i] = randomNote(gen_);
+    }
+    randomSequence_ = rand;
+}
+
+int WiSequencer::getNextStep()
+{
+    int incrementValue = 1;
+    // if (randomSequence_) {
+    //     std::uniform_int_distribution<> randomIncr(0, numNotes_);
+    //     incrementValue = randomIncr(gen_);
+    // }
+
+    int candidateStep = (currentStep_ + incrementValue) % numNotes_;
+    while (not notes_[candidateStep].active) {
+        candidateStep = (candidateStep + 1) % numNotes_;
+    }
+
+    return candidateStep;
+}
+
+void WiSequencer::includeFractionOfDefaultSequence(float frac)
+{
+    if (assignedSequence_) return;
+
+    int numGroups = 4;
+    numNotes_ = 6;
+
+    int n = (int)lroundf(frac * numGroups + 0.4);   // simpler intent: map frac to 0..4
+    if(n < 1) n = 1;
+    if(n > numGroups) n = numGroups;
+
+    // start all off
+    for(int i = 0; i < numNotes_; ++i) notes_[i].active = false;
+
+    // your specific pattern
+    std::vector<int> notes = {0,12,7, 3};
+    if(n >= 1) {
+        notes_[0].active = true;
+        notes_[0].note = randomSequence_ ? notes[randomNotes_[0] % 1] : 0;
+    }
+
+    if(n >= 2) {
+        notes_[3].active = true;
+        notes_[3].note = randomSequence_ ? notes[randomNotes_[1] % 2] : 12;
+    }
+
+    if(n >= 3) {
+        notes_[2].active = true;
+        notes_[2].note = randomSequence_ ? notes[randomNotes_[2] % 3] : 7;
+        notes_[5].active = true;
+        notes_[5].note = randomSequence_ ? (notes[randomNotes_[2] % 3] + 12) : 12 + 7;
+    }
+
+    if(n == 4) {
+        notes_[1].active = true;
+        notes_[1].note = randomSequence_ ? notes[randomNotes_[3] % 4] : 3;
+        notes_[4].active = true;
+        notes_[4].note = randomSequence_ ? (notes[randomNotes_[3] % 4] + 12) : 12 + 3;
+    }
+
+    // A better way is to choose number of octaves as well
 }
 
 void WiSequencer::setPeriod(float period)
@@ -201,45 +163,48 @@ void WiSequencer::setPeriod(float period)
     period_ = period;
 }
 
-void WiSequencer::setLfoPeriod(float period)
+void WiSequencer::startAssignCountdown()
 {
-    lfoPeriod_ = period;
+    assignCountdown_ = 3 * fs_;
+    notes_.clear();
+    numNotes_ = 0;
 }
 
-void WiSequencer::setLfoAmplitude(float amp)
+void WiSequencer::freezeSequenceChanged()
 {
-    lfoAmp_ = amp;
-}
-
-void WiSequencer::processLed()
-{
-    if(triggerCountdown_ > 0) {
-        trigger_ = true;
-        triggerCountdown_--;
-    } else {
-        trigger_ = false;
-    }
-}
-
-void WiSequencer::trigger(float length)
-{
-    triggerCountdown_ = (int)lroundf(length * fs_);
+    
 }
 
 void WiSequencer::assignNote(int note)
 {
-    if(!assignMode_)
+    if (note == -39) { // The note C-2 will be treated as a sequencer tick. Potential bug: If a low note is played in a midi keyboard, midiClock will be true!
+        tick();
+#ifndef USE_NO_MIDI
+        rt_printf("Note outside range. Ticking sequencer\n");
+#endif
         return;
+    }
 
-    trigger();
-    currentNote_ = note;
+    if (assignMode_) {
+        if (assignCountdown_ == 0)
+            startAssignCountdown();
 
-    notes_.push_back(note);
-    numNotes_ = notes_.size();
+        assignCountdown_ = 1 * fs_; // Prolong countdown
+        assignedSequence_ = true;
+        notes_.push_back({note, true});
+        numNotes_ = notes_.size();
 
-    // keep step index valid if notes were empty before
-    if(numNotes_ == 1) {
-        currentStep_ = 0;
-        stepCountdown_ = 1;
+        // keep step index valid if notes were empty before
+        if (numNotes_ == 1) {
+            currentStep_ = 0;
+            stepCountdown_ = 1;
+        }
+
+        // Step 0: Erase all notes when entering assign mode
+        // Step 1: Erase all notes. Assign and play first note and start 6 second timer
+        // Step 2: Assign and play all notes before timer ends
+        // Step 3: resume sequencer when timer ends
+
+        // Step 4: Call includeFractionOfDefaultSequence when leaving assign mode
     }
 }

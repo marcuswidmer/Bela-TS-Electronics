@@ -2,13 +2,14 @@
 #define WI_MODULAR_HPP
 
 #include "WiSequencer.hpp"
-#include "../sampler/Sampler.hpp"
+#include "Sampler.hpp"
+#include "WiLFO.hpp"
 
 #include <random>
 
 enum Pgm {
     PgmRandomOctave,
-    PgmTestBench,
+    PgmOctaveSelector,
     PgmSequencer,
     PgmSampler,
     PgmUnused,
@@ -29,6 +30,8 @@ struct AnalogIO {
 
 const int numPitchBiases = 5;
 
+class Midi;
+
 class WiModular
 {
 public:
@@ -38,12 +41,16 @@ public:
     void processAudio(float * out);
     void init(float analogIOSampleRate, int audioSampleRate = 44100);
     void assignNote(int note);
-    void reinitSequencer(float analogSampleRate);
-    void reinitSampler(int audioSampleRate);
+    void tickSequencer();
+    int getMidiNoteOffset() { return midiNoteOffset_; }
+    void samplerPlayNewVoice(int note, float velocity);
+    void samplerReleaseVoice(int note);
+    void setMidiClock(bool val);
     AnalogIO analogIO = {};
 
 private:
-    void processLed();
+    void processLFO();
+    void processLedAndTrigger();
     void triggerLed(float length);
 
     int ledCountdown_ = 0;
@@ -52,15 +59,21 @@ private:
     std::random_device rd_;
     std::mt19937 gen_;
     int randomPeriodShift_ = 0;
-    int triggerCntr_ = 0;
     bool buttonPressed_ = false;
     const float octaveScalingFactor_ = 6.0f;
     float speedSmoothed_ = 0.0f;
-    float lfoSpeedSmoothed_ = 0.0f;
+    float octaveSmoothed_ = 0.0f;
+    float octFloatSmoothed_ = 0.0f;
+    float lfoAmpSmoothed_ = 0.0f;
     int pitchBiases[numPitchBiases] = {0, 7, 12, 19, 24};
+    Midi * midi_;
+    const char* midiPort_ = "hw:1,0,0";
+    static const int midiNoteOffset_ = 39; //51 is standard
+    bool freeze_ = false;
 
     WiSequencer wiSequencer;
     Sampler sampler;
+    WiLFO wiLFO;
 };
 
 

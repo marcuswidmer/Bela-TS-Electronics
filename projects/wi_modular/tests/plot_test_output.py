@@ -13,7 +13,7 @@ def build_and_run_tests(project_root: Path):
     subprocess.run(["make"], cwd=str(build_dir), check=True)
 
     # Run: ./tests/build/WiSustainerTest from project root
-    subprocess.run([str(project_root / "build" / "WiModularTest")],
+    subprocess.run([str(project_root / "build" / "WiModularTest"), "--gtest_filter=WiModularTest.test_sequencer_default_sequence"],
                    cwd=str(project_root), check=True)
 
 
@@ -109,7 +109,7 @@ def main():
     build_and_run_tests(project_root)
 
     # Locate the generated WAV files.
-    wav_orig_path = find_wav(project_root, "cvOut0Seq.wav")
+    wav_orig_path = find_wav(project_root, "cvOut0DefSeq.wav")
 
     # Load WAV data.
     original_audio, original_sr, original_ch = load_wav_16bit(wav_orig_path)

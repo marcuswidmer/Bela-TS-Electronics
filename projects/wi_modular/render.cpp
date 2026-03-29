@@ -40,10 +40,10 @@ static Pgm setProgram(float val)
     if (val < programLevels[1] - (levelDiff / 2))
         return PgmRandomOctave;
     else if (val >= programLevels[1] - (levelDiff / 2) && val < programLevels[2] - (levelDiff / 2))
-        return PgmTestBench;
-    else if (val >= programLevels[2] - (levelDiff / 2) && val < programLevels[3] - (levelDiff / 2))
+        return PgmOctaveSelector;
+    else if (val >= programLevels[2] - (levelDiff / 2) && val < 0.75)
         return PgmSequencer;
-    else if (val >= programLevels[3] - (levelDiff / 2))
+    else if (val >= 0.75)
         return PgmSampler;
 }
 
@@ -82,11 +82,10 @@ void render(BelaContext *context, void *userData)
             wiModular.analogIO.pot1 = 1.0f - analogRead(context, n/gAudioFramesPerAnalogFrame, 2);
             wiModular.analogIO.pot2 = 1.0f - analogRead(context, n/gAudioFramesPerAnalogFrame, 3);
             Pgm pgm = setProgram(analogRead(context, n/gAudioFramesPerAnalogFrame, 4));
-            if (pgm != prevProgram) {
-                if (pgm == PgmSequencer) { wiModular.reinitSequencer((int)context->analogSampleRate); }
-                if (pgm == PgmSampler) { wiModular.reinitSampler(context->audioSampleRate); }
+            if (pgm != wiModular.analogIO.selector) {
                 wiModular.analogIO.selector = pgm;
-                prevProgram = pgm;
+                rt_printf("Setting pgm: %d\n", pgm);
+                wiModular.setMidiClock(false);
             }
 
             wiModular.process();

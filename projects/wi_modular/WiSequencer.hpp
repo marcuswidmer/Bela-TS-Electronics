@@ -1,56 +1,59 @@
 #ifndef WI_SEQUENCER_HPP
 #define WI_SEQUENCER_HPP
 
+#include <atomic>
 #include <random>
-
-class Midi;
+#include <functional>
+#include <vector>
 
 const float ledOnDuration = 0.01f; // 10 ms
 
+struct NoteInfo {
+    int note;
+    bool active;
+};
 class WiSequencer
 {
 public:
     WiSequencer();
     void process();
-    void init(float fs);
-    void reinit();
+    void init(float fs, std::function<void(float)> = nullptr);
+    void tick();
     void setPeriod(float period);
-    void setLfoPeriod(float period);
-    void setLfoAmplitude(float amp);
     void setButton(bool button) { button_ = button; };
+    void setRandomSequence(bool rand);
     void assignNote(int note);
-    void trigger(float length = ledOnDuration);
+    void includeFractionOfDefaultSequence(float frac);
+    void freezeSequenceChanged();
 
-    bool trigger_ = false;
+
+    bool midiClock_ = false;
     int currentNote_ = 0;
     float lfo_ = 0.0f;
 
 private:
-    void processLed();
-    void processLfo();
-    void processNormalMode();
-    void processAssignMode();
-    void startEraseCountdown() { eraseCountdown_ = 1 * fs_; };
+    void startAssignCountdown();
+    int getNextStep();
 
-    bool assignMode_;
-    std::vector<int> notes_;
+    bool assignMode_ = false;
+    std::vector<NoteInfo> notes_;
     float fs_;
     float period_ = 1.0f; // 1 second default
-    float lfoPeriod_ = 1.0f;
-    float lfoAmp_ = 0.0f;
     int currentStep_;
     int samplesPerStep_;
-    float samplesPerLfoCycle_;
     int stepCountdown_;
-    int lfoCycleCountdown_;
     int numNotes_;
-    int triggerCountdown_ = 0;
-    int eraseCountdown_ = 0;
+    int numGroups_;
+    int assignCountdown_ = 0;
     bool button_ = false;
     bool prevButton_ = false;
-    Midi * midi_;
-    const char* midiPort_ = "hw:1,0,0";
-    static const int midiNoteOffset_ = 51; //51 is standard
+    bool assignedSequence_ = false;
+    bool randomSequence_ = false;
+    std::vector<int> randomNotes_;
+    std::atomic_bool tickRequested_;
+    std::function<void(float)> ledCb_;
+    std::random_device rd_;
+    std::mt19937 gen_;
 };
 
 
