@@ -1,0 +1,3 @@
+# cvOut1 rising-edge log
+# columns: index  elapsed_ms  elapsed_s  delta_ms
+1	0	0	-1

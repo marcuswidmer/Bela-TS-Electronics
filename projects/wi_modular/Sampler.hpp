@@ -21,7 +21,8 @@ public:
     float convertFromProgram(int program);
     int getProgram() { return program_; };
     void setRelease(float r);
-    void setProgram(float program);
+    void setProgram(float program, bool hard = false);
+    void setDroneVoiceVelocity(int voice, float velocity);
     void setMainLevel(float lev);
     void setDroneLevel(float lev);
     void deleteMidi();
@@ -29,7 +30,7 @@ public:
 private:
     void loadDataSet(std::string path, DataSet & ds, bool stereo = false);
     void invalidateDataSets();
-    void playNewDroneVoice(int note);
+    void playNewDroneVoice(int note, int voice = 0);
 
     int currentVoiceIdx_ = 0;
     int program_ = 0;
@@ -39,7 +40,7 @@ private:
     float firstSecondMix_ = 0.0f;
     float droneAmpl_ = 0.0f;
     static const int numRegVoices_ = 6;
-    static const int numDroneVoices_ = 1;
+    static const int numDroneVoices_ = 2;
     static const int numVoices_ = numRegVoices_ + numDroneVoices_;
     static const int midiNoteOffset_ = 39; //51 is standard
     std::multimap<int, int> activeVoices_;

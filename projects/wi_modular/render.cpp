@@ -58,6 +58,7 @@ static Pgm setProgram(float val)
 bool setup(BelaContext *context, void *userData)
 {
     Bela_setADCLevel(-12.0); //This used to be -6. So changing to the old value to deal with guitar output level.
+    //Bela_setDACLevel(0);
     gInverseSampleRate = 1.0 / context->audioSampleRate;
 
     if(context->audioFrames)
@@ -86,6 +87,12 @@ void render(BelaContext *context, void *userData)
                 wiModular.analogIO.selector = pgm;
                 rt_printf("Setting pgm: %d\n", pgm);
                 wiModular.setMidiClock(false);
+                if (pgm == PgmSequencer) {
+                    wiModular.samplerSetProgramFromSequencer(4);
+                    wiModular.samplerSetDroneVelocity(74, 0);
+                    wiModular.samplerSetDroneVelocity(71, 0);
+                    rt_printf("Pgm set drone velocity and pgm\n");
+                }
             }
 
             wiModular.process();

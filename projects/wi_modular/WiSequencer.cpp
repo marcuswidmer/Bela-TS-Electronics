@@ -1,6 +1,7 @@
 #include "WiSequencer.hpp"
 #include <cmath>
 #include <chrono>
+#include <cstdio>
 
 WiSequencer::WiSequencer()
     : tickRequested_()
@@ -9,7 +10,7 @@ WiSequencer::WiSequencer()
 {
 }
 
-void WiSequencer::init(float fs, std::function<void(float)> ledCb)
+void WiSequencer::init(float fs, std::function<void(float)> ledCb, std::function<void(float)> priorityLedCb)
 {
     fs_ = fs;
 
@@ -25,6 +26,9 @@ void WiSequencer::init(float fs, std::function<void(float)> ledCb)
     samplesPerStep_ = 1;
 
     ledCb_ = ledCb;
+    priorityLedCb_ = priorityLedCb;
+
+    freezeSequence_ = false;
 }
 
 void WiSequencer::process()
@@ -39,14 +43,21 @@ void WiSequencer::process()
         return;
     }
 
+    if (!priorityLedCb_) {
+#ifndef USE_NO_MIDI
+        rt_printf("priority led cb not set");
+#endif
+        return;
+    }
+
     if(button_ && button_ != prevButton_)
     {
         printf("Changing assign mode\n");
         assignMode_ = !assignMode_;
         if(assignMode_)
-            ledCb_(1);
+            priorityLedCb_(1);
         else {
-            ledCb_(0.1f);
+            priorityLedCb_(0.5f);
             assignedSequence_ = false;
             includeFractionOfDefaultSequence(0.5f);
         }
@@ -59,6 +70,9 @@ void WiSequencer::process()
 
     if (assignCountdown_ > 0)
         assignCountdown_--;
+
+    // if (freezeChangeCountdown_ > 0)
+    //     freezeChangeCountdown_--;
 
     if (midiClock_) {
         if (tickRequested_) {
@@ -130,29 +144,29 @@ void WiSequencer::includeFractionOfDefaultSequence(float frac)
     for(int i = 0; i < numNotes_; ++i) notes_[i].active = false;
 
     // your specific pattern
-    std::vector<int> notes = {0,12,7, 3};
+    std::vector<int> notes = {1,13,8, 4};
     if(n >= 1) {
         notes_[0].active = true;
-        notes_[0].note = randomSequence_ ? notes[randomNotes_[0] % 1] : 0;
+        notes_[0].note = randomSequence_ ? notes[randomNotes_[0] % 1] : notes[0];
     }
 
     if(n >= 2) {
         notes_[3].active = true;
-        notes_[3].note = randomSequence_ ? notes[randomNotes_[1] % 2] : 12;
+        notes_[3].note = randomSequence_ ? notes[randomNotes_[1] % 2] : notes[1];
     }
 
     if(n >= 3) {
         notes_[2].active = true;
-        notes_[2].note = randomSequence_ ? notes[randomNotes_[2] % 3] : 7;
+        notes_[2].note = randomSequence_ ? notes[randomNotes_[2] % 3] : notes[2];
         notes_[5].active = true;
-        notes_[5].note = randomSequence_ ? (notes[randomNotes_[2] % 3] + 12) : 12 + 7;
+        notes_[5].note = randomSequence_ ? (notes[randomNotes_[2] % 3] + 12) : 12 + notes[2];
     }
 
     if(n == 4) {
         notes_[1].active = true;
-        notes_[1].note = randomSequence_ ? notes[randomNotes_[3] % 4] : 3;
+        notes_[1].note = randomSequence_ ? notes[randomNotes_[3] % 4] : notes[3];
         notes_[4].active = true;
-        notes_[4].note = randomSequence_ ? (notes[randomNotes_[3] % 4] + 12) : 12 + 3;
+        notes_[4].note = randomSequence_ ? (notes[randomNotes_[3] % 4] + 12) : 12 + notes[3];
     }
 
     // A better way is to choose number of octaves as well
@@ -170,9 +184,13 @@ void WiSequencer::startAssignCountdown()
     numNotes_ = 0;
 }
 
-void WiSequencer::freezeSequenceChanged()
+void WiSequencer::freezeSequenceChanged(bool freezeSequence)
 {
-    
+    if (freezeSequence != freezeSequence_){//){ and freezeChangeCountdown_ == 0) {
+        //freezeChangeCountdown_ = fs_ * 2;
+        freezeSequence_ = freezeSequence;
+        priorityLedCb_(freezeSequence_ ? 1 : 0.5);
+    }
 }
 
 void WiSequencer::assignNote(int note)
@@ -185,7 +203,14 @@ void WiSequencer::assignNote(int note)
         return;
     }
 
-    if (assignMode_) {
+    if (note <= 0) {
+#ifndef USE_NO_MIDI
+        rt_printf("note outside range\n");
+#endif
+        return;
+    }
+
+    if (assignMode_ and not freezeSequence_) {
         if (assignCountdown_ == 0)
             startAssignCountdown();
 
@@ -194,11 +219,11 @@ void WiSequencer::assignNote(int note)
         notes_.push_back({note, true});
         numNotes_ = notes_.size();
 
-        // keep step index valid if notes were empty before
-        if (numNotes_ == 1) {
-            currentStep_ = 0;
-            stepCountdown_ = 1;
-        }
+        // // keep step index valid if notes were empty before
+        // if (numNotes_ == 1) {
+        //     currentStep_ = 0;
+        //     stepCountdown_ = 1;
+        // }
 
         // Step 0: Erase all notes when entering assign mode
         // Step 1: Erase all notes. Assign and play first note and start 6 second timer

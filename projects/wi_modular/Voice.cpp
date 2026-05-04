@@ -88,3 +88,8 @@ void Voice::setRelease(float r)
 {
     envGen_->setRelease(r);
 }
+
+void Voice::setVelocity(float v)
+{
+    velocity_ = v;
+}

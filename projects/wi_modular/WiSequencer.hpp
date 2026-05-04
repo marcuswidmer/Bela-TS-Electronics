@@ -17,14 +17,14 @@ class WiSequencer
 public:
     WiSequencer();
     void process();
-    void init(float fs, std::function<void(float)> = nullptr);
+    void init(float fs, std::function<void(float)> = nullptr, std::function<void(float)> = nullptr);
     void tick();
     void setPeriod(float period);
     void setButton(bool button) { button_ = button; };
     void setRandomSequence(bool rand);
     void assignNote(int note);
     void includeFractionOfDefaultSequence(float frac);
-    void freezeSequenceChanged();
+    void freezeSequenceChanged(bool freezeSequence);
 
 
     bool midiClock_ = false;
@@ -45,6 +45,8 @@ private:
     int numNotes_;
     int numGroups_;
     int assignCountdown_ = 0;
+    int freezeChangeCountdown_ = 0;
+    std::atomic_bool freezeSequence_;
     bool button_ = false;
     bool prevButton_ = false;
     bool assignedSequence_ = false;
@@ -52,6 +54,7 @@ private:
     std::vector<int> randomNotes_;
     std::atomic_bool tickRequested_;
     std::function<void(float)> ledCb_;
+    std::function<void(float)> priorityLedCb_;
     std::random_device rd_;
     std::mt19937 gen_;
 };

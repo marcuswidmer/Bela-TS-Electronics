@@ -63,15 +63,15 @@ void Sampler::playNewVoice(int note, float velocity)
     activeVoices_.insert({note, currentVoiceIdx_});
 }
 
-void Sampler::playNewDroneVoice(int note)
+void Sampler::playNewDroneVoice(int note, int voice)
 {
     if (!droneDs_.valid)
         return;
 
     int droneVoiceIdx = numRegVoices_;
 
-    voices_[droneVoiceIdx]->setNote(note);
-    voices_[droneVoiceIdx]->setPlaying(true, 1.0f);
+    voices_[droneVoiceIdx + voice]->setNote(note);
+    voices_[droneVoiceIdx + voice]->setPlaying(true, 1.0f);
 }
 
 void Sampler::releaseVoice(int note)
@@ -89,10 +89,15 @@ void Sampler::releaseVoice(int note)
     activeVoices_.erase(it);
 }
 
-void Sampler::setProgram(float program)
+void Sampler::setProgram(float program, bool hard)
 {
-    programSmoothed_ += 0.0001f * (program - programSmoothed_);
-    program_ = programSmoothed_;
+    if (not hard) {
+        programSmoothed_ += 0.0001f * (program - programSmoothed_);
+        program_ = programSmoothed_;
+    } else {
+        program_ = program;
+    }
+
     if (program_ != prevProgram_) {
 #ifndef USE_NO_MIDI
         rt_printf("New program: %d\n", program_);
@@ -103,8 +108,7 @@ void Sampler::setProgram(float program)
         invalidateDataSets();
         switch(program_) {
             case 0:
-                loadDataSet("../sampler/samples/ufordragelig_trommer", droneDs_, true);
-                playNewDroneVoice(1);
+                loadDataSet("../sampler/samples/background_drones", ds_, true);
                 break;
             case 1:
                 loadDataSet("../sampler/samples/miami_skate_boy_trommer", droneDs_, true);
@@ -119,6 +123,11 @@ void Sampler::setProgram(float program)
                 // TODO: These samples are exported as 48kHz fs
                 loadDataSet("../sampler/samples/violin_melotron", ds_, true);
                 loadDataSet("../sampler/samples/flute_melotron", secondDs_, true);
+                break;
+            case 4:
+                loadDataSet("../sampler/samples/background_drones", droneDs_, true);
+                playNewDroneVoice(1, 0);
+                playNewDroneVoice(2, 1);
                 break;
             default:
                 break;
@@ -135,8 +144,7 @@ void Sampler::setAnalogIns(AnalogIns ins)
         invalidateDataSets();
         switch(program_) {
             case 0:
-                loadDataSet("../sampler/samples/ufordragelig_trommer", droneDs_, true);
-                playNewDroneVoice(1);
+                loadDataSet("../sampler/samples/background_drones", ds_, true);
                 break;
             case 1:
                 loadDataSet("../sampler/samples/miami_skate_boy_trommer", droneDs_, true);
@@ -287,3 +295,11 @@ void Sampler::setDroneLevel(float lev)
     droneAmpl_ = lev;
 }
 
+void Sampler::setDroneVoiceVelocity(int voiceIdx, float vel)
+{
+    if (!droneDs_.valid)
+        return;
+
+    int droneVoiceIdx = numRegVoices_;
+    voices_[droneVoiceIdx + voiceIdx]->setVelocity(vel);
+}

@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <random>
 #include <chrono>
+#include <fstream>
 
 #ifndef USE_NO_MIDI
 #include <libraries/Midi/Midi.h>
@@ -34,8 +35,10 @@ void midiMessageCallback(MidiChannelMessage message, void* arg)
 		}
 
 	} else if (message.getType() == kmmControlChange) {
-        rt_printf("control change\n");
-        wiModular->
+        rt_printf("control change %d %d\n", message.getDataByte(0), message.getDataByte(1));
+        int ctrlType = message.getDataByte(0);
+        int ctrlVal = message.getDataByte(1);
+        wiModular->samplerSetDroneVelocity(ctrlType, ctrlVal);
     }
 
     // Your system reports MIDI clock as type == 7
@@ -117,9 +120,13 @@ void WiModular::init(float analogIOSampleRate, int audioSampleRate)
 {
     analogIOSampleRate_ = analogIOSampleRate;
     auto triggerLedCb = [this](float length){
-        triggerLed(length);
+        triggerLed(length, false);
     };
-    wiSequencer.init(analogIOSampleRate_, triggerLedCb);
+
+    auto triggerPriorityLedCb = [this](float length){
+        triggerLed(length, true);
+    };
+    wiSequencer.init(analogIOSampleRate_, triggerLedCb, triggerPriorityLedCb);
     wiLFO.init(analogIOSampleRate_);
 
     sampler.init(audioSampleRate, triggerLedCb);
@@ -200,6 +207,7 @@ void WiModular::process()
         wiSequencer.setPeriod(1.0f / f);
         wiSequencer.setButton(analogIO.button);
         wiSequencer.setRandomSequence(analogIO.pot2 > 0.5);
+        wiSequencer.freezeSequenceChanged(analogIO.pot2 > 0.5);
         wiSequencer.includeFractionOfDefaultSequence(analogIO.pot1);
         wiSequencer.process();
         analogIO.cvOut0 = midiToAnalogOut(wiSequencer.currentNote_);
@@ -211,13 +219,16 @@ void WiModular::process()
         sampler.setDroneLevel(analogIO.pot2);
     }
 
-    processLFO();
+    //processLFO();
     processLedAndTrigger();
 }
 
-void WiModular::triggerLed(float length)
+void WiModular::triggerLed(float length, bool priority)
 {
-    ledCountdown_ = (int)lroundf(length * analogIOSampleRate_);
+    if (priority)
+        ledPriorityCountdown_ = (int)lroundf(length * analogIOSampleRate_);
+    else
+        ledCountdown_ = (int)lroundf(length * analogIOSampleRate_);
 }
 
 void WiModular::setMidiClock(bool val)
@@ -240,18 +251,81 @@ void WiModular::processLFO()
 
 void WiModular::processLedAndTrigger()
 {
-    if(ledCountdown_ > 0) {
+    if(ledCountdown_ > 0 or ledPriorityCountdown_ > 0) {
         analogIO.led = true;
-        analogIO.cvOut1 = true;
-        ledCountdown_--;
     } else {
         analogIO.led = false;
-        analogIO.cvOut1 = false;
     }
+
+    analogIO.cvOut1 = ledCountdown_ > 0;
+
+//    {
+//         using Clock = std::chrono::steady_clock;
+
+//         static bool prevCvOut1 = false;
+//         static unsigned long risingEdgeCount = 0;
+//         static Clock::time_point startTp = Clock::now();   // program start reference
+//         static Clock::time_point lastEdgeTp{};
+//         static bool haveLastEdge = false;
+//         static bool fileInitialized = false;
+
+//         const bool currCvOut1 = analogIO.cvOut1 > 0.5f;
+
+//         if (currCvOut1 && !prevCvOut1) {
+//             // First time: clear file and write a header
+//             if (!fileInitialized) {
+//                 std::ofstream ofs("cvOut1_log.txt",
+//                                   std::ios::out | std::ios::trunc);
+//                 if (ofs.is_open()) {
+//                     ofs << "# cvOut1 rising-edge log\n";
+//                     ofs << "# columns: index  elapsed_ms  elapsed_s  delta_ms\n";
+//                     ofs.close();
+//                 }
+//                 fileInitialized = true;
+//             }
+
+//             const auto now = Clock::now();
+//             const auto elapsedMs =
+//                 std::chrono::duration_cast<std::chrono::milliseconds>(
+//                     now - startTp).count();
+//             const double elapsedS = elapsedMs / 1000.0;
+
+//             long long deltaMs = -1;  // -1 means "no previous edge"
+//             if (haveLastEdge) {
+//                 deltaMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+//                               now - lastEdgeTp).count();
+//             }
+
+//             ++risingEdgeCount;
+
+//             // Append this edge's timing to the file
+//             std::ofstream ofs("cvOut1_log.txt",
+//                               std::ios::out | std::ios::app);
+//             if (ofs.is_open()) {
+//                 ofs << risingEdgeCount
+//                     << "\t" << elapsedMs
+//                     << "\t" << elapsedS
+//                     << "\t" << deltaMs
+//                     << "\n";
+//                 ofs.close();
+//             }
+
+//             lastEdgeTp    = now;
+//             haveLastEdge  = true;
+//         }
+//         prevCvOut1 = currCvOut1;
+//     }
+
+    if(ledCountdown_ > 0)
+        ledCountdown_--;
+
+    if(ledPriorityCountdown_ > 0)
+       ledPriorityCountdown_--;
+
 }
 void WiModular::processAudio(float * out)
 {
-    if (analogIO.selector == PgmSampler)
+    if (analogIO.selector == PgmSampler or analogIO.selector == PgmSequencer)
     {
         sampler.process(out);
     }
@@ -267,6 +341,11 @@ void WiModular::tickSequencer()
     wiSequencer.tick();
 }
 
+void WiModular::freezeSequenceChanged(bool freezeSequence)
+{
+    wiSequencer.freezeSequenceChanged(freezeSequence);
+}
+
 void WiModular::samplerPlayNewVoice(int note, float velocity)
 {
     if (note <= 0) {
@@ -280,6 +359,22 @@ void WiModular::samplerPlayNewVoice(int note, float velocity)
     triggerLed(0.01);
     analogIO.cvOut0 = midiToAnalogOut(note);
     //rt_printf("Note: %d. Cv is: %f\n", note, analogIO.cvOut0);
+}
+
+void WiModular::samplerSetProgramFromSequencer(int pgm)
+{
+    sampler.setProgram(pgm, true);
+    sampler.setMainLevel(1.0f);
+    sampler.setDroneLevel(1.0f);
+}
+
+void WiModular::samplerSetDroneVelocity(int ctrlType, int ctrlVal)
+{
+    if (ctrlType == 74)
+        sampler.setDroneVoiceVelocity(0, ctrlVal / 127.0f);
+
+    if (ctrlType == 71)
+        sampler.setDroneVoiceVelocity(1, ctrlVal / 127.0f);
 }
 
 void WiModular::samplerReleaseVoice(int note)

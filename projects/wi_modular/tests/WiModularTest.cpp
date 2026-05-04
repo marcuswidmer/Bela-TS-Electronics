@@ -101,7 +101,7 @@ TEST(WiModularTest, sequencer)
     WiModular m;
     m.init(1000);
     m.analogIO.selector = PgmSequencer;
-    m.analogIO.pot0 = 0.2;
+    m.analogIO.pot0 = 0.4;
 
     //Assign mode
     m.analogIO.button = true;
@@ -120,9 +120,9 @@ TEST(WiModularTest, sequencer)
 
 
     std::vector<float> interleaved;
-    for (int i = 0; i < 2000; ++i) { // 10s
-        if (i > 1000)
-            m.analogIO.pot0 = 0.9;
+    for (int i = 0; i < 50000; ++i) { // 10s
+        // if (i > 1000)
+        //     m.analogIO.pot0 = 0.9;
 
         m.process();
         interleaved.push_back(m.analogIO.cvOut0);
@@ -168,6 +168,41 @@ TEST(WiModularTest, test_sequencer_default_sequence)
     }
 
     writeWavFile("cvOut0DefSeq.wav", interleaved, 1000);
+}
+
+TEST(WiModularTest, test_sequencer_default_sequence_with_drone)
+{
+    WiModular m;
+    m.init(1000, 44100);
+    m.analogIO.selector = PgmSequencer;
+    m.analogIO.button = false;
+    m.samplerSetProgramFromSequencer(4);
+    m.samplerSetDroneVelocity(74, 100);
+    m.samplerSetDroneVelocity(71, 100);
+    m.process();
+
+
+    std::vector<float> interleaved;
+    float out[2] = {};
+
+    for (int i = 0; i < 5 * 44100; ++i) { // 1s
+        m.processAudio(out);
+        interleaved.push_back(out[0]);
+        interleaved.push_back(out[1]);
+    }
+    m.samplerSetDroneVelocity(74, 127);
+    m.samplerSetDroneVelocity(71, 40);
+    for (int i = 0; i < 5 * 44100; ++i) { // 1s
+        m.processAudio(out);
+        interleaved.push_back(out[0]);
+        interleaved.push_back(out[1]);
+    }
+
+    m.samplerSetDroneVelocity(74, 0);
+    m.samplerSetDroneVelocity(71, 0);
+
+
+    writeWavFile("seqWithDrone.wav", interleaved, 44100);
 }
 
 int main(int argc, char **argv) {

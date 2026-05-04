@@ -45,15 +45,19 @@ public:
     int getMidiNoteOffset() { return midiNoteOffset_; }
     void samplerPlayNewVoice(int note, float velocity);
     void samplerReleaseVoice(int note);
+    void samplerSetDroneVelocity(int ctrlType, int ctrlVal);
+    void samplerSetProgramFromSequencer(int pgm);
     void setMidiClock(bool val);
+    void freezeSequenceChanged(bool freezeSequence);
     AnalogIO analogIO = {};
 
 private:
     void processLFO();
     void processLedAndTrigger();
-    void triggerLed(float length);
+    void triggerLed(float length, bool priority = false);
 
     int ledCountdown_ = 0;
+    int ledPriorityCountdown_ = 0;
     float sampleCntr_ = 0;
     float analogIOSampleRate_ = 0;
     std::random_device rd_;

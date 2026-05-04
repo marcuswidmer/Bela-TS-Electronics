@@ -34,6 +34,7 @@ public:
     void init(int fs);
     void setNote(int note);
     void setRelease(float r);
+    void setVelocity(float v);
 
 private:
     int getNumFrames();
