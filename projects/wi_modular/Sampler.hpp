@@ -40,7 +40,7 @@ private:
     float firstSecondMix_ = 0.0f;
     float droneAmpl_ = 0.0f;
     static const int numRegVoices_ = 6;
-    static const int numDroneVoices_ = 2;
+    static const int numDroneVoices_ = 1;
     static const int numVoices_ = numRegVoices_ + numDroneVoices_;
     static const int midiNoteOffset_ = 39; //51 is standard
     std::multimap<int, int> activeVoices_;

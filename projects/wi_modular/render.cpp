@@ -87,12 +87,6 @@ void render(BelaContext *context, void *userData)
                 wiModular.analogIO.selector = pgm;
                 rt_printf("Setting pgm: %d\n", pgm);
                 wiModular.setMidiClock(false);
-                if (pgm == PgmSequencer) {
-                    wiModular.samplerSetProgramFromSequencer(4);
-                    wiModular.samplerSetDroneVelocity(74, 0);
-                    wiModular.samplerSetDroneVelocity(71, 0);
-                    rt_printf("Pgm set drone velocity and pgm\n");
-                }
             }
 
             wiModular.process();

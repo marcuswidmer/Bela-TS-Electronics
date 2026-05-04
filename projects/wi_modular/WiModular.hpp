@@ -45,8 +45,6 @@ public:
     int getMidiNoteOffset() { return midiNoteOffset_; }
     void samplerPlayNewVoice(int note, float velocity);
     void samplerReleaseVoice(int note);
-    void samplerSetDroneVelocity(int ctrlType, int ctrlVal);
-    void samplerSetProgramFromSequencer(int pgm);
     void setMidiClock(bool val);
     void freezeSequenceChanged(bool freezeSequence);
     AnalogIO analogIO = {};

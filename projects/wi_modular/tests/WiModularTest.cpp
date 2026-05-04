@@ -170,41 +170,6 @@ TEST(WiModularTest, test_sequencer_default_sequence)
     writeWavFile("cvOut0DefSeq.wav", interleaved, 1000);
 }
 
-TEST(WiModularTest, test_sequencer_default_sequence_with_drone)
-{
-    WiModular m;
-    m.init(1000, 44100);
-    m.analogIO.selector = PgmSequencer;
-    m.analogIO.button = false;
-    m.samplerSetProgramFromSequencer(4);
-    m.samplerSetDroneVelocity(74, 100);
-    m.samplerSetDroneVelocity(71, 100);
-    m.process();
-
-
-    std::vector<float> interleaved;
-    float out[2] = {};
-
-    for (int i = 0; i < 5 * 44100; ++i) { // 1s
-        m.processAudio(out);
-        interleaved.push_back(out[0]);
-        interleaved.push_back(out[1]);
-    }
-    m.samplerSetDroneVelocity(74, 127);
-    m.samplerSetDroneVelocity(71, 40);
-    for (int i = 0; i < 5 * 44100; ++i) { // 1s
-        m.processAudio(out);
-        interleaved.push_back(out[0]);
-        interleaved.push_back(out[1]);
-    }
-
-    m.samplerSetDroneVelocity(74, 0);
-    m.samplerSetDroneVelocity(71, 0);
-
-
-    writeWavFile("seqWithDrone.wav", interleaved, 44100);
-}
-
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

@@ -236,7 +236,7 @@ void WiModular::setMidiClock(bool val)
     wiSequencer.midiClock_ = val;
 }
 
-void WiModular::processLFO()
+void WiModular::processLFO() // Lfo causes audio output to glitch. Maybe to many updates in the DAC causes output to become discontinuous. 
 {
     float lfoSpeed = 0.05;
     float lfoFreq = 0.1f + 20.0f * lfoSpeed;
@@ -320,12 +320,12 @@ void WiModular::processLedAndTrigger()
         ledCountdown_--;
 
     if(ledPriorityCountdown_ > 0)
-       ledPriorityCountdown_--;
+        ledPriorityCountdown_--;
 
 }
 void WiModular::processAudio(float * out)
 {
-    if (analogIO.selector == PgmSampler or analogIO.selector == PgmSequencer)
+    if (analogIO.selector == PgmSampler)
     {
         sampler.process(out);
     }
@@ -359,22 +359,6 @@ void WiModular::samplerPlayNewVoice(int note, float velocity)
     triggerLed(0.01);
     analogIO.cvOut0 = midiToAnalogOut(note);
     //rt_printf("Note: %d. Cv is: %f\n", note, analogIO.cvOut0);
-}
-
-void WiModular::samplerSetProgramFromSequencer(int pgm)
-{
-    sampler.setProgram(pgm, true);
-    sampler.setMainLevel(1.0f);
-    sampler.setDroneLevel(1.0f);
-}
-
-void WiModular::samplerSetDroneVelocity(int ctrlType, int ctrlVal)
-{
-    if (ctrlType == 74)
-        sampler.setDroneVoiceVelocity(0, ctrlVal / 127.0f);
-
-    if (ctrlType == 71)
-        sampler.setDroneVoiceVelocity(1, ctrlVal / 127.0f);
 }
 
 void WiModular::samplerReleaseVoice(int note)
