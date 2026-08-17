@@ -99,7 +99,7 @@ TEST(WiModularTest, test_bench)
 TEST(WiModularTest, sequencer)
 {
     WiModular m;
-    m.init(1000);
+    m.init(22050);
     m.analogIO.selector = PgmSequencer;
     m.analogIO.pot0 = 0.4;
 
@@ -112,24 +112,30 @@ TEST(WiModularTest, sequencer)
     m.assignNote(13);
     m.assignNote(40);
 
-    //Leave Assign mode
-    m.analogIO.button = true;
-    m.process();
-    m.analogIO.button = false;
-    m.process();
-
 
     std::vector<float> interleaved;
-    for (int i = 0; i < 50000; ++i) { // 10s
-        // if (i > 1000)
-        //     m.analogIO.pot0 = 0.9;
+    for (int i = 0; i < 20000*22; ++i) { // 10s
+        if (i == 1000 * 22)
+            m.analogIO.pot1 = 0;
+        if (i == 3000 * 22)
+            m.analogIO.pot1 = 0.27;
+        if (i == 6000 * 22)
+            m.analogIO.pot1 = 0.49;
+        if (i == 9000 * 22)
+            m.analogIO.pot1 = 0.56;
+        if (i == 12000 * 22)
+            m.analogIO.pot1 = 0.74;
+        if (i == 15000 * 22)
+            m.analogIO.pot1 = 0.78;
+        if (i == 18000 * 22)
+            m.analogIO.pot1 = 0.99;
 
         m.process();
-        interleaved.push_back(m.analogIO.cvOut0);
         interleaved.push_back(m.analogIO.cvOut1);
+        interleaved.push_back(m.analogIO.cvOut2);
     }
 
-    writeWavFile("cvOut0Seq.wav", interleaved, 1000);
+    writeWavFile("cvOut0Seq.wav", interleaved, 22050);
 }
 
 TEST(WiModularTest, sampler)

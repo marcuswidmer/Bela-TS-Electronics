@@ -105,10 +105,10 @@ void GranularReverb::process(float in, float out[2])
 
         if (grain_number == GRANULAR_NUM_GRAINS - 1) {
             grain_number = 0;
-            initialize_delay_array(random_delays);
-            initialize_amp_array(random_amps_l);
-            initialize_amp_array(random_amps_r);
-            printf("Reinit\n");
+            // initialize_delay_array(random_delays);
+            // initialize_amp_array(random_amps_l);
+            // initialize_amp_array(random_amps_r);
+            // printf("Reinit\n");
         }
 
     }

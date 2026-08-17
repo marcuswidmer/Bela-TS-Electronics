@@ -1,16 +1,16 @@
 #ifndef WI_SYNTHESIZER_HPP
 #define WI_SYNTHESIZER_HPP
-#include <optional>
-#define WI_SYNTHESIZER_NUM_VOICES 16
+#define WI_SYNTHESIZER_NUM_VOICES 6
 #define WI_SYNTHESIZER_NUM_SAMPLES_PER_WAVE 2205 // one period of a 20 Hz sinewave at fs = 44100 Hz
-#define WI_SYNTHESIZER_NUM_OSCILLATORS 8
+#define WI_SYNTHESIZER_NUM_OSCILLATORS 4
 
 #include "ADSR.h"
 #include "StateVariableFilter.hpp"
 #include "Vibrato.hpp"
 #include "GranularReverb.hpp"
-
 #include <map>
+
+class Midi;
 
 enum class OscType {
     Sine,
@@ -29,8 +29,8 @@ struct Osc {
     float waveData[WI_SYNTHESIZER_NUM_SAMPLES_PER_WAVE];
     OscType type;
     int noteOffset;
-    std::optional<bool> left; // false = right, nullopt = mono
-
+    bool left; // false = right, nullopt = mono
+    bool isStereo;
 };
 
 struct Voice {
@@ -45,8 +45,10 @@ public:
     WiSynthesizer(int fs);
 
     void process(float out[2]);
+    void init();
     void playNewVoice(int note, int velocity);
     void releaseVoice(int note);
+    int getMidiNoteOffset() { return midiNoteOffset_; }
 
 private:
     unsigned int runner_ = 0;
@@ -59,6 +61,9 @@ private:
     StateVariableFilter svf_;
     Vibrato vib_;
     GranularReverb granular_;
+    Midi * midi_;
+    const char* midiPort_ = "hw:1,0,0";
+    static const int midiNoteOffset_ = 51; //51 is standard
 };
 
 

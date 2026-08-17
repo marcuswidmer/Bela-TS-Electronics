@@ -12,7 +12,27 @@
 #include "tables/pulse_duty_50.h"
 
 #include <cmath>
-#include <optional>
+
+#ifndef USE_NO_MIDI
+#include <libraries/Midi/Midi.h>
+void midiMessageCallback(MidiChannelMessage message, void* arg)
+{
+    auto * wiSynth = static_cast<WiSynthesizer *>(arg);
+	if (message.getType() == kmmNoteOn || (message.getType() == kmmNoteOff)) {
+		if (message.getType() == kmmNoteOn) {
+            wiSynth->playNewVoice(message.getDataByte(0) - wiSynth->getMidiNoteOffset(), message.getDataByte(1) / 128.0f);
+			rt_printf("note on: %d. Vel: %d\n", message.getDataByte(0),message.getDataByte(1));
+
+        } else if (message.getType() == kmmNoteOff) {
+            wiSynth->releaseVoice(message.getDataByte(0) - wiSynth->getMidiNoteOffset());
+			rt_printf("note off: %d\n", message.getDataByte(0));
+		}
+
+	} else if (message.getType() == kmmControlChange) {
+        rt_printf("control change\n");
+    }
+}
+#endif
 
 static float getWavetableData(OscType type, int idx)
 {
@@ -46,6 +66,9 @@ WiSynthesizer::WiSynthesizer(int fs)
    , vib_(fs)
    , granular_()
 {
+#ifndef USE_NO_MIDI
+    midi_ = new Midi();
+#endif
 
     for (int i = 0; i < WI_SYNTHESIZER_NUM_VOICES; ++i)
     {
@@ -54,33 +77,19 @@ WiSynthesizer::WiSynthesizer(int fs)
         voices_[i].envGen_->setADSR(200, 100000, 1.0, 0.2);
 
 
-        voices_[i].oscs[0].type = OscType::Sine;
-        voices_[i].oscs[0].active = false;
+        voices_[i].oscs[0].type = OscType::Klokkenspel;
+        voices_[i].oscs[0].active = true;
+        voices_[i].oscs[0].noteOffset = 12;
 
-        voices_[i].oscs[1].type = OscType::Saw;
+        voices_[i].oscs[1].type = OscType::AnalogStrings;
         voices_[i].oscs[1].active = true;
-        voices_[i].oscs[1].noteOffset = -12;
+        voices_[i].oscs[1].left = true;
+        voices_[i].oscs[1].isStereo = true;
 
-        voices_[i].oscs[2].type = OscType::Klokkenspel;
+        voices_[i].oscs[2].type = OscType::AnalogStringsAlt;
         voices_[i].oscs[2].active = true;
-
-        voices_[i].oscs[3].type = OscType::Human;
-        voices_[i].oscs[3].active = false;
-
-        voices_[i].oscs[4].type = OscType::AnalogStrings;
-        voices_[i].oscs[4].active = true;
-        voices_[i].oscs[4].left = true;
-
-        voices_[i].oscs[5].type = OscType::AnalogStringsAlt;
-        voices_[i].oscs[5].active = true;
-        voices_[i].oscs[5].left = false;
-
-        voices_[i].oscs[6].type = OscType::PulseDuty50;
-        voices_[i].oscs[6].active = false;
-
-        voices_[i].oscs[7].type = OscType::Tri;
-        voices_[i].oscs[7].active = true;
-
+        voices_[i].oscs[2].left = false;
+        voices_[i].oscs[2].isStereo = true;
 
         for (int k = 0; k < WI_SYNTHESIZER_NUM_OSCILLATORS; ++k)
         {
@@ -90,6 +99,15 @@ WiSynthesizer::WiSynthesizer(int fs)
             }
         }
     }
+}
+
+void WiSynthesizer::init()
+{
+#ifndef USE_NO_MIDI
+    midi_->readFrom(midiPort_);
+	midi_->enableParser(true);
+	midi_->getParser()->setCallback(midiMessageCallback, (void*) this);
+#endif
 }
 
 void WiSynthesizer::process(float out[2])
@@ -114,9 +132,9 @@ void WiSynthesizer::process(float out[2])
 
                     int idx = stride * runner_;
                     float sample = env * voices_[i].oscs[j].waveData[idx % WI_SYNTHESIZER_NUM_SAMPLES_PER_WAVE];
-                    if (not voices_[i].oscs[j].left.has_value())
+                    if (not voices_[i].oscs[j].isStereo)
                         sampleMono += sample;
-                    else if (*voices_[i].oscs[j].left)
+                    else if (voices_[i].oscs[j].left)
                         sampleL += sample;
                     else
                         sampleR += sample;
@@ -133,8 +151,8 @@ void WiSynthesizer::process(float out[2])
     float preFilter = sampleMono;
     FilterOutputs outputs = svf_.processSample(preFilter);
     float vibratoOutput = vib_.process(outputs.lowPass);
-    float tmpOut[2];
-    granular_.process(vibratoOutput, tmpOut);
+    //float tmpOut[2];
+    //granular_.process(vibratoOutput, tmpOut);
     out[0] = amplitude_ * (vibratoOutput + sampleL);
     out[1] = amplitude_ * (vibratoOutput + sampleR);
     runner_++;
@@ -145,6 +163,25 @@ void WiSynthesizer::playNewVoice(int note, int velocity)
     currentVoiceIdx_++;
     if (currentVoiceIdx_ >= WI_SYNTHESIZER_NUM_VOICES)
         currentVoiceIdx_ = 0;
+
+    for (int i = 0; i < WI_SYNTHESIZER_NUM_VOICES; ++i)
+    {
+        for (auto& pair : activeVoices_)
+        {
+    #ifndef USE_NO_MIDI
+            rt_printf("Checking voices_\n");
+    #endif
+            if (pair.second == currentVoiceIdx_)
+            {
+                // voice is aready active
+                currentVoiceIdx_++;
+                if (currentVoiceIdx_ >= WI_SYNTHESIZER_NUM_VOICES)
+                    currentVoiceIdx_ = 0;
+                break;
+            }
+        }
+    }
+
     voices_[currentVoiceIdx_].note_ = note;
     voices_[currentVoiceIdx_].envGen_->gate(true);
     activeVoices_.insert({note, currentVoiceIdx_});
@@ -161,4 +198,7 @@ void WiSynthesizer::releaseVoice(int note)
     auto it = voicesWithNote.first;
     voices_[it->second].envGen_->gate(false);
     activeVoices_.erase(it);
+#ifndef USE_NO_MIDI
+    rt_printf("Releasing note %d on voice_ nr:%d\n", note, it->second);
+#endif
 }

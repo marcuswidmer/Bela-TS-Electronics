@@ -78,7 +78,7 @@ public:
 private:
     void measureWave(float in);
     void recordWave(float in);
-    void playWave(float out[2]);
+    void playWave(float in, float out[2]);
     void donePlaying();
 
     unsigned int runner_ = 0;

@@ -4,13 +4,14 @@
 #include <cstdio>
 
 WiSequencer::WiSequencer()
-    : tickRequested_()
+    : substepChance_(0, 100)
+    , tickRequested_()
     , rd_()
     , gen_(rd_())
 {
 }
 
-void WiSequencer::init(float fs, std::function<void(float)> ledCb, std::function<void(float)> priorityLedCb)
+void WiSequencer::init(float fs, std::function<void(float)> ledCb, std::function<void(float)> priorityLedCb, std::function<void(float)> syncTriggerCb, std::function<void(uint8_t)> midiByteCb)
 {
     fs_ = fs;
 
@@ -23,10 +24,13 @@ void WiSequencer::init(float fs, std::function<void(float)> ledCb, std::function
     // Initialize timing
     currentStep_ = 0;
     stepCountdown_ = 1;
+    midiStepCountdown_ = 1;
     samplesPerStep_ = 1;
 
     ledCb_ = ledCb;
     priorityLedCb_ = priorityLedCb;
+    syncTriggerCb_ = syncTriggerCb;
+    midiByteCb_ = midiByteCb;
 
     freezeSequence_ = false;
 }
@@ -35,6 +39,17 @@ void WiSequencer::process()
 {
     if(!fs_)
         return;
+
+    if (midiByteCb_ && midiClockSamplesPerTick_ > 0)
+    {
+        midiClockPhase_ += 1.0f;
+
+        if (midiClockPhase_ >= midiClockSamplesPerTick_)
+        {
+            midiClockPhase_ -= midiClockSamplesPerTick_;
+            midiByteCb_(0xF8);   // send MIDI clock (0xF8)
+        }
+    }
 
     if (!ledCb_) {
 #ifndef USE_NO_MIDI
@@ -53,7 +68,8 @@ void WiSequencer::process()
     if(button_ && button_ != prevButton_)
     {
         printf("Changing assign mode\n");
-        assignMode_ = !assignMode_;
+        //assignMode_ = !assignMode_;
+        resyncRequested_ = true;
         if(assignMode_)
             priorityLedCb_(1);
         else {
@@ -82,15 +98,29 @@ void WiSequencer::process()
         }
     } else {
         int newSamplesPerStep = (int)lroundf(period_ * fs_);
-        if(newSamplesPerStep < 1)
+        if (newSamplesPerStep == 0)
             newSamplesPerStep = 1;
         samplesPerStep_ = newSamplesPerStep;
 
+        produceSubsteps();
+
         if(--stepCountdown_ <= 0)
         {
+            rt_printf("BPM: %f\n", 60 / period_);
             stepCountdown_ = samplesPerStep_;
             currentStep_ = getNextStep();
             ledCb_(0.01);
+            if (resyncRequested_) {
+                midiByteCb_(0xFC);
+                midiByteCb_(0xFA);
+                midiClockPhase_ = 0;
+                midiByteCb_(0xF8);
+                resyncRequested_ = false;
+            }
+            //syncTriggerCb_(0.03); // Teori: Hvis triggersignalene er like lange, så vil det noen ganger skje et spenningsfall slik at korg volca beats ikke får med seg triggeret. Løsning: La sync trigger vare litt lengre slik at triggeret kommer gjennom
+            //midiClockCb_();
+            //rt_printf("clocl\n");
+            // Ny teori: Støy på trigger signalet fører noen ganger til falske positive triggers
         }
     }
 
@@ -101,6 +131,25 @@ void WiSequencer::tick()
 {
     midiClock_ = true;
     tickRequested_ = true;
+}
+
+void WiSequencer::setSubstepBehaviour(float val)
+{
+    if (not assignedSequence_) return;
+
+    if (val > 0 and val <= 0.25) {
+        stepDivider_ = 1;
+        substepLikelihood_ = 0;
+    } else if (val > 0.25 and val <= 0.5) {
+        stepDivider_ = 2;
+        substepLikelihood_ = (val - 0.25) / 0.25 * 100;
+    } else if (val > 0.5 and val <= 0.75) {
+        stepDivider_ = 4;
+        substepLikelihood_ = (val - 0.5) / 0.25 * 100;
+    } else if (val > 0.75 and val <= 1.0) {
+        stepDivider_ = 8;
+        substepLikelihood_ = (val - 0.75) / 0.25 * 100;
+    }
 }
 
 void WiSequencer::setRandomSequence(bool rand)
@@ -175,6 +224,16 @@ void WiSequencer::includeFractionOfDefaultSequence(float frac)
 void WiSequencer::setPeriod(float period)
 {
     period_ = period;
+
+    if(fs_ <= 0)
+        return;
+
+    // period_ is seconds per beat (quarter note)
+    float secondsPerClock = period_ / 6.0f;
+    midiClockSamplesPerTick_ = secondsPerClock * fs_;
+
+    if(midiClockSamplesPerTick_ < 1)
+        midiClockSamplesPerTick_ = 1;
 }
 
 void WiSequencer::startAssignCountdown()
@@ -203,7 +262,7 @@ void WiSequencer::assignNote(int note)
         return;
     }
 
-    if (note <= 0) {
+    if (note <= 0) { // IDE!!!! Her kan man legge in et "tomt" steg- slik at man kan få pauser i sequenceren
 #ifndef USE_NO_MIDI
         rt_printf("note outside range\n");
 #endif
@@ -233,3 +292,19 @@ void WiSequencer::assignNote(int note)
         // Step 4: Call includeFractionOfDefaultSequence when leaving assign mode
     }
 }
+
+void WiSequencer::produceSubsteps()
+{
+    unsigned int newSamplesPerSubStep = samplesPerStep_ / stepDivider_;
+    if (newSamplesPerSubStep == 0)
+        newSamplesPerSubStep = 1;
+
+    if (stepCountdown_ < samplesPerStep_ and
+        stepCountdown_ > 0 and
+        stepCountdown_ % newSamplesPerSubStep == 0)
+    {
+        if (substepChance_(gen_) < substepLikelihood_)
+            ledCb_(0.01);
+    }
+}
+

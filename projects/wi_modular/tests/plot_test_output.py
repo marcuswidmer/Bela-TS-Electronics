@@ -90,7 +90,7 @@ def plot_overlay(original_audio: np.ndarray, original_sr: int, original_ch: int,
     axes[0].legend()
 
     # Right channel
-    axes[1].plot(t_orig, original_audio[:, 1], lw=0.7, color=color_orig_r, label=f"{title_orig} — Right")
+    axes[0].plot(t_orig, original_audio[:, 1], lw=0.7, color=color_orig_r, label=f"{title_orig} — Right")
     axes[1].set_title("Right channel")
     axes[1].set_xlabel("Time (s)")
     axes[1].set_ylabel("Amplitude")

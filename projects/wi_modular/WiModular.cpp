@@ -1,5 +1,6 @@
 #include "WiModular.hpp"
 #include "WiLFO.hpp"
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <random>
@@ -36,9 +37,6 @@ void midiMessageCallback(MidiChannelMessage message, void* arg)
 
 	} else if (message.getType() == kmmControlChange) {
         rt_printf("control change %d %d\n", message.getDataByte(0), message.getDataByte(1));
-        int ctrlType = message.getDataByte(0);
-        int ctrlVal = message.getDataByte(1);
-        wiModular->samplerSetDroneVelocity(ctrlType, ctrlVal);
     }
 
     // Your system reports MIDI clock as type == 7
@@ -120,13 +118,21 @@ void WiModular::init(float analogIOSampleRate, int audioSampleRate)
 {
     analogIOSampleRate_ = analogIOSampleRate;
     auto triggerLedCb = [this](float length){
-        triggerLed(length, false);
+        setLedCountdown(length, false);
     };
 
     auto triggerPriorityLedCb = [this](float length){
-        triggerLed(length, true);
+        setLedCountdown(length, true);
     };
-    wiSequencer.init(analogIOSampleRate_, triggerLedCb, triggerPriorityLedCb);
+
+    auto triggerSyncTriggerCb = [this](float length){
+        setTriggerCountdown(length, true);
+    };
+
+    auto midiClockCb = [this](uint8_t byte) {
+        sendMidiByte(byte);
+    };
+    wiSequencer.init(analogIOSampleRate_, triggerLedCb, triggerPriorityLedCb, triggerSyncTriggerCb, midiClockCb);
     wiLFO.init(analogIOSampleRate_);
 
     sampler.init(audioSampleRate, triggerLedCb);
@@ -134,6 +140,7 @@ void WiModular::init(float analogIOSampleRate, int audioSampleRate)
 #ifndef USE_NO_MIDI
     midi_ = new Midi();
     midi_->readFrom(midiPort_);
+    midi_->writeTo(midiPort_);
 	midi_->enableParser(true);
 	midi_->getParser()->setCallback(midiMessageCallback, (void*) this);
 #endif
@@ -173,7 +180,7 @@ void WiModular::process()
         if (sampleCntr_ > (periodSamples + randomPeriodShift_)) {
             std::uniform_int_distribution<> randomOctave(0, numOctaves);
             analogIO.cvOut0 = midiToAnalogOut(pitchBiases[pitchBiasIdx], 0) + randomOctave(gen_) / 5.0f;
-            triggerLed(0.01);
+            setLedCountdown(0.01);
             std::uniform_int_distribution<> randomShiftDist(-3 * periodSamples, periodSamples);
             float randomness = analogIO.pot2;
             randomPeriodShift_ = randomness * randomShiftDist(gen_);
@@ -209,21 +216,25 @@ void WiModular::process()
         wiSequencer.setRandomSequence(analogIO.pot2 > 0.5);
         wiSequencer.freezeSequenceChanged(analogIO.pot2 > 0.5);
         wiSequencer.includeFractionOfDefaultSequence(analogIO.pot1);
+        wiSequencer.setSubstepBehaviour(analogIO.pot1);
         wiSequencer.process();
         analogIO.cvOut0 = midiToAnalogOut(wiSequencer.currentNote_);
-        analogIO.cvOut2 = wiSequencer.lfo_;
+        analogIO.cvOut1 = ledCountdown_ > 0;
+        analogIO.cvOut2 = syncTriggerCountdown_ > 0;
 
     } else if (analogIO.selector == PgmSampler) {
         sampler.setProgram(analogIO.pot0 * 4.0f);
         sampler.setMainLevel(analogIO.pot1);
         sampler.setDroneLevel(analogIO.pot2);
+        analogIO.cvOut1 = ledCountdown_ > 0;
     }
 
     //processLFO();
-    processLedAndTrigger();
+    processTriggers();
+    processLed();
 }
 
-void WiModular::triggerLed(float length, bool priority)
+void WiModular::setLedCountdown(float length, bool priority)
 {
     if (priority)
         ledPriorityCountdown_ = (int)lroundf(length * analogIOSampleRate_);
@@ -231,12 +242,19 @@ void WiModular::triggerLed(float length, bool priority)
         ledCountdown_ = (int)lroundf(length * analogIOSampleRate_);
 }
 
+void WiModular::setTriggerCountdown(float length, bool sync)
+{
+    if (sync) {
+        syncTriggerCountdown_ = (int)lroundf(length * analogIOSampleRate_);
+    }
+}
+
 void WiModular::setMidiClock(bool val)
 {
     wiSequencer.midiClock_ = val;
 }
 
-void WiModular::processLFO() // Lfo causes audio output to glitch. Maybe to many updates in the DAC causes output to become discontinuous. 
+void WiModular::processLFO() // Lfo causes audio output to glitch. Maybe to many updates in the DAC causes output to become discontinuous.
 {
     float lfoSpeed = 0.05;
     float lfoFreq = 0.1f + 20.0f * lfoSpeed;
@@ -249,15 +267,19 @@ void WiModular::processLFO() // Lfo causes audio output to glitch. Maybe to many
     analogIO.cvOut2 = wiLFO.lfo_;
 }
 
-void WiModular::processLedAndTrigger()
+void WiModular::processTriggers()
+{
+    if(syncTriggerCountdown_ > 0)
+       syncTriggerCountdown_--;
+}
+
+void WiModular::processLed()
 {
     if(ledCountdown_ > 0 or ledPriorityCountdown_ > 0) {
         analogIO.led = true;
     } else {
         analogIO.led = false;
     }
-
-    analogIO.cvOut1 = ledCountdown_ > 0;
 
 //    {
 //         using Clock = std::chrono::steady_clock;
@@ -356,7 +378,7 @@ void WiModular::samplerPlayNewVoice(int note, float velocity)
     }
 
     sampler.playNewVoice(note, velocity);
-    triggerLed(0.01);
+    setLedCountdown(0.01);
     analogIO.cvOut0 = midiToAnalogOut(note);
     //rt_printf("Note: %d. Cv is: %f\n", note, analogIO.cvOut0);
 }
@@ -364,4 +386,15 @@ void WiModular::samplerPlayNewVoice(int note, float velocity)
 void WiModular::samplerReleaseVoice(int note)
 {
     sampler.releaseVoice(note);
+}
+
+void WiModular::sendMidiByte(uint8_t byte)
+{
+#ifndef USE_NO_MIDI
+    if(!midi_)
+        return;
+
+    //uint8_t clockByte = 0xF8; // MIDI clock
+    midi_->writeOutput(&byte, 1);
+#endif
 }

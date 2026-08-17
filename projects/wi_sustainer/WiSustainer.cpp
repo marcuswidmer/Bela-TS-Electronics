@@ -1,4 +1,5 @@
 #include "WiSustainer.hpp"
+#include "ADSR.h"
 
 #include <cmath>
 
@@ -11,7 +12,7 @@ WiSustainer::WiSustainer(int fs)
     {
         voices_[i].note_ = 0;
         voices_[i].envGen_ = new ADSR(fs);
-        voices_[i].envGen_->setADSR(200, 100000, 1.0, 0.1);
+        voices_[i].envGen_->setADSR(200, 20000, 0.0, 0.1);
         voices_[i].envGen_->setIdleCb([=]{ donePlaying(); });
         voices_[i].osc.active = true;
     }
@@ -61,8 +62,15 @@ void WiSustainer::recordWave(float in)
     }
 }
 
-void WiSustainer::playWave(float out[2])
+void WiSustainer::playWave(float in, float out[2])
 {
+    if (voices_[currentVoiceIdx_].envGen_->getState() == ADSR::env_sustain) {
+        rms_.push(in);
+        if (rms_.rms() < trigThresh_) {
+            voices_[currentVoiceIdx_].envGen_->gate(false);
+        }
+    }
+
     float env = voices_[currentVoiceIdx_].envGen_->process();
     float sample = env * voices_[currentVoiceIdx_].osc.waveData[playIdx_];
     out[0] = sample;
@@ -88,7 +96,7 @@ void WiSustainer::process(float in, float out[2], float * rms)
             break;
 
         case WavePhase::Play:
-            playWave(out);
+            playWave(in, out);
             break;
 
     }

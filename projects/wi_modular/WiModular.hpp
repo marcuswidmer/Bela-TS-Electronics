@@ -51,11 +51,15 @@ public:
 
 private:
     void processLFO();
-    void processLedAndTrigger();
-    void triggerLed(float length, bool priority = false);
+    void processLed();
+    void processTriggers();
+    void setLedCountdown(float length, bool priority = false);
+    void setTriggerCountdown(float length, bool sync = false);
+    void sendMidiByte(uint8_t byte);
 
     int ledCountdown_ = 0;
     int ledPriorityCountdown_ = 0;
+    int syncTriggerCountdown_ = 0;
     float sampleCntr_ = 0;
     float analogIOSampleRate_ = 0;
     std::random_device rd_;

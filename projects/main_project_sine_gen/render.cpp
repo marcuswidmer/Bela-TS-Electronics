@@ -141,19 +141,19 @@ void render(BelaContext *context, void *userData)
     for (unsigned int n = 0; n < context->audioFrames; n++) {
         if (gAudioFramesPerAnalogFrame && !(n % gAudioFramesPerAnalogFrame)) {
             AnalogIns ins = {
-                .input_0 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput0),
-                .input_1 = 1.0f, // analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput1),
-                .input_2 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput2),
-                .input_3 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput3),
-                .input_4 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput4),
-                .input_5 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput5),
-                .input_6 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput6),
-                .input_7 = 0.0f // analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput7)
+                .input_0 = 1.0f,//analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput0),
+                .input_1 = 0.3f, // analogRead(context, n/gAudioFramesPerAnalogFrame, 0),
+                .input_2 = 0.0f,//analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput2),
+                .input_3 = 0.0f,//analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput3),
+                .input_4 = 0.0f,//analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput4),
+                .input_5 = 0.0f,//analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput5),
+                .input_6 = 0.0f,//analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput6),
+                .input_7 = 0.5f // analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput7)
             };
             //printf("%f, %f, %f, %f, %f, %f, %f, %f\n", ins.input_0, ins.input_1, ins.input_2, ins.input_3, ins.input_4, ins.input_5, ins.input_6, ins.input_7);
             setProgram(ins);
 
-            note = map(analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput1), 0, 1, 0, NUM_NOTES-1);
+            note = map(analogRead(context, n/gAudioFramesPerAnalogFrame, 1), 0, 1, 0, NUM_NOTES-1);
             onn = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput7) > 0.4f;
             //printf("%f, ", freqs[note]);
             karplusResonator.setAnalogIns(ins);
@@ -168,7 +168,7 @@ void render(BelaContext *context, void *userData)
         vol = volAlpha * (float)onn + (1 - volAlpha) * oldVol;
         oldVol = vol;
         //printf("%f, %f\n", vol, (float)onn);
-        
+
         phase += 2.0f * M_PI * freq * gInverseSampleRate;
         if (phase > (2*M_PI))
             phase -= 2*M_PI;

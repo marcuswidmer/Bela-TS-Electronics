@@ -45,8 +45,7 @@ bool setup(BelaContext *context, void *userData)
 
     if(context->audioFrames)
         gAudioFramesPerAnalogFrame = context->audioFrames / context->analogFrames;
-
-    wiSynth.playNewVoice(69, 1);
+    wiSynth.init();
 
     // snd_pcm_hw_params_t *p_params;
     // snd_pcm_hw_params_alloca(&p_params);
@@ -57,26 +56,29 @@ bool setup(BelaContext *context, void *userData)
 void render(BelaContext *context, void *userData)
 {
     for (unsigned int n = 0; n < context->audioFrames; n++) {
-        if (gAudioFramesPerAnalogFrame && !(n % gAudioFramesPerAnalogFrame)) {
-            AnalogIns ins = {
-                .input_0 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput0),
-                .input_1 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput1),
-                .input_2 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput2),
-                .input_3 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput3),
-                .input_4 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput4),
-                .input_5 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput5),
-                .input_6 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput6),
-                .input_7 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput7)
-            };
-            //printf("%f, %f, %f, %f, %f, %f, %f, %f\n", ins.input_0, ins.input_1, ins.input_2, ins.input_3, ins.input_4, ins.input_5, ins.input_6, ins.input_7);
-        }
+        // if (gAudioFramesPerAnalogFrame && !(n % gAudioFramesPerAnalogFrame)) {
+        //     AnalogIns ins = {
+        //         .input_0 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput0),
+        //         .input_1 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput1),
+        //         .input_2 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput2),
+        //         .input_3 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput3),
+        //         .input_4 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput4),
+        //         .input_5 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput5),
+        //         .input_6 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput6),
+        //         .input_7 = analogRead(context, n/gAudioFramesPerAnalogFrame, gSensorInput7)
+        //     };
+        //     //printf("%f, %f, %f, %f, %f, %f, %f, %f\n", ins.input_0, ins.input_1, ins.input_2, ins.input_3, ins.input_4, ins.input_5, ins.input_6, ins.input_7);
+        // }
 
+        float in[2] = {};
+        in[0] = audioRead(context, n, 0);
+        in[1] = audioRead(context, n, 1);
         float out[2] = {};
-        wiSynth.process(out);
+        //wiSynth.process(out);
         abortIfLoud(out[0]);
 
-        audioWrite(context, n, 0, out[0]);
-        audioWrite(context, n, 1, out[1]);
+        audioWrite(context, n, 0, in[0]);
+        audioWrite(context, n, 1, in[1]);
     }
 }
 

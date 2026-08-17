@@ -56,7 +56,8 @@ def load_wav_16bit(path: Path):
         return audio, sample_rate, n_channels
 
 
-def plot_overlay(original_audio: np.ndarray, original_sr: int, original_ch: int,
+def plot_overlay(in_audio: np.ndarray, in_sr: int, in_ch: int,
+        original_audio: np.ndarray, original_sr: int, original_ch: int,
                  rms_audio: np.ndarray, rms_sr: int, rms_ch: int,
                  title_orig: str, title_rms: str):
     t_orig = np.arange(original_audio.shape[0]) / float(original_sr)
@@ -87,6 +88,7 @@ def plot_overlay(original_audio: np.ndarray, original_sr: int, original_ch: int,
     fig, axes = plt.subplots(2, 1, figsize=(11, 6), sharex=False)
 
     # Left channel
+    axes[0].plot(t_orig, in_audio[0:len(t_orig), 0], lw=0.7, color="black", label=f"{title_orig} — In Left")
     axes[0].plot(t_orig, original_audio[:, 0], lw=0.7, color=color_orig_l, label=f"{title_orig} — Left")
     rms_left = rms_audio[:, 0] if rms_ch == 2 else rms_audio[:, 0]
     axes[0].plot(t_rms, rms_left, lw=1.2, color=color_rms, label=f"{title_rms}")
@@ -119,13 +121,16 @@ def main():
     # Locate the generated WAV files.
     wav_orig_path = find_wav(project_root, "singen_the_original.wav")
     wav_rms_path = find_wav(project_root, "singen_the_original_rms.wav")
+    in_path = find_wav(project_root, "jazz_lick.wav")
 
     # Load WAV data.
+    in_audio, in_sr, in_ch = load_wav_16bit(in_path)
     original_audio, original_sr, original_ch = load_wav_16bit(wav_orig_path)
     rms_audio, rms_sr, rms_ch = load_wav_16bit(wav_rms_path)
 
     # Plot overlay.
-    plot_overlay(original_audio, original_sr, original_ch,
+    plot_overlay(in_audio, in_sr, in_ch,
+                original_audio, original_sr, original_ch,
                  rms_audio, rms_sr, rms_ch,
                  title_orig=wav_orig_path.name, title_rms=wav_rms_path.name)
 
