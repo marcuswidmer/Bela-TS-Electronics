@@ -5,6 +5,7 @@
 
 Bitcrusher::Bitcrusher()
 {
+    
 }
 
 float Bitcrusher::process(float inSamp)
