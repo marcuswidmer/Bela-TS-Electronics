@@ -1,17 +1,17 @@
 #pragma once
 
-#include <Bela.h>
+#include <array>
+#include "KarplusResonator.hpp"
 
 class WiPepper {
 public:
     float volume = 0.0f;
 
-    bool setup(BelaContext* context);
-    void processBlock(BelaContext* context);
+    bool setup(float sampleRate);
+    void setPots(const std::array<float, 8>& pots);
+    void pressButton(unsigned int button);
     void process(const float* in, float* out);
 
 private:
-    int audioFramesPerAnalogFrame = 0;
-    float ledPeakThresholds[10] = {};
-    float inputPeak = 0.0f;
+    KarplusResonator resonator;
 };
