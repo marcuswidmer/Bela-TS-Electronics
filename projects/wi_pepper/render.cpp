@@ -1,5 +1,7 @@
 #include <Bela.h>
 #include "WiPepper.hpp"
+#include "ProgramIndicator.hpp"
+#include <libraries/Midi/Midi.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -8,6 +10,29 @@
 
 namespace {
 WiPepper wiPepper;
+ProgramIndicator programIndicator;
+Midi midi;
+constexpr const char* kMidiPort = "hw:1,0,0";
+bool midiInputReady = false, midiOutputReady = false;
+
+void sendMidiByte(uint8_t byte)
+{
+    if(midiOutputReady) midi.writeOutput(byte);
+}
+
+void readMidi()
+{
+    if(!midiInputReady) return;
+    auto* parser = midi.getParser();
+    // Consume a bounded snapshot on the render thread, so note assignment and
+    // sequence processing never modify the sequence concurrently.
+    const int available = parser->numAvailableMessages();
+    for(int i = 0; i < available; ++i) {
+        const auto message = parser->getNextChannelMessage();
+        if(message.getType() == kmmNoteOn)
+            wiPepper.midiNoteOn(message.getDataByte(0), message.getDataByte(1));
+    }
+}
 
 // Pepper LED pins in left-to-right order.
 constexpr unsigned int kLedPins[] = {6, 7, 10, 2, 3, 0, 1, 4, 5, 8};
@@ -61,7 +86,10 @@ void readControls(BelaContext* context, unsigned int frame)
         if(button.samples < debounceSamples) ++button.samples;
         if(button.samples >= debounceSamples && button.stable != button.candidate) {
             button.stable = button.candidate;
-            if(button.stable) wiPepper.pressButton(i);
+            if(button.stable) {
+                wiPepper.pressButton(i);
+                if(i == 0) programIndicator.select(wiPepper.program());
+            }
         }
     }
 }
@@ -69,8 +97,17 @@ void readControls(BelaContext* context, unsigned int frame)
 
 bool setup(BelaContext* context, void* userData)
 {
-    if(!wiPepper.setup(context->audioSampleRate) || context->audioInChannels < 2 || context->audioOutChannels < 2)
+    const float controlSampleRate = context->analogFrames ? context->analogSampleRate : context->audioSampleRate;
+    if(!wiPepper.setup(context->audioSampleRate, controlSampleRate, sendMidiByte) || context->audioInChannels < 2 || context->audioOutChannels < 2)
         return false;
+    midi.enableParser(true);
+    midiInputReady = midi.readFrom(kMidiPort) > 0;
+    midiOutputReady = midi.writeTo(kMidiPort) > 0;
+    if(!midiInputReady || !midiOutputReady)
+        std::printf("MIDI %s: input %s, output %s\n", kMidiPort,
+                    midiInputReady ? "ready" : "unavailable", midiOutputReady ? "ready" : "unavailable");
+    programIndicator.setup(context->digitalSampleRate);
+    programIndicator.select(wiPepper.program());
     controlInterval = std::max(1u, static_cast<unsigned int>(context->audioSampleRate/1000));
     debounceSamples = std::max(1u, static_cast<unsigned int>(context->audioSampleRate*0.005f));
     controlCountdown = 0;
@@ -99,10 +136,23 @@ bool setup(BelaContext* context, void* userData)
 
 void render(BelaContext* context, void* userData)
 {
+    readMidi();
     inputPeak = 0.0f;
+    unsigned int analogFrame = 0;
     for (unsigned int n = 0; n < context->audioFrames; n++) {
 
         readControls(context, n);
+        // Write each analog frame exactly once, including when the analog and
+        // audio rates differ. Keep the sequencer at its configured analog rate.
+        if(!context->analogFrames) wiPepper.processControls();
+        while(analogFrame < context->analogFrames &&
+              analogFrame * context->audioFrames < (n + 1) * context->analogFrames) {
+            wiPepper.processControls();
+            const auto& cv = wiPepper.cvOutputs();
+            for(unsigned int channel = 0; channel < context->analogOutChannels; ++channel)
+                analogWriteOnce(context, analogFrame, channel, channel < cv.size() ? cv[channel] : 0.0f);
+            ++analogFrame;
+        }
         float in[2] = {};
         float out[2] = {};
 
@@ -121,13 +171,20 @@ void render(BelaContext* context, void* userData)
     for (unsigned int frame = 0; frame < context->digitalFrames; ++frame) {
         for (unsigned int led = 0; led < kLedCount; ++led) {
             if (kLedPins[led] < context->digitalChannels) {
-                digitalWriteOnce(context, frame, kLedPins[led],
-                    inputPeak >= ledPeakThresholds[led] ? HIGH : LOW);
+                bool on = wiPepper.program() == WiPepper::PgmKarplusResonator
+                    && inputPeak >= ledPeakThresholds[led];
+                if(wiPepper.program() == WiPepper::PgmSequencer && led == kLedCount - 1)
+                    on = wiPepper.sequencerLed();
+                if(programIndicator.active())
+                    on = programIndicator.ledOn(led);
+                digitalWriteOnce(context, frame, kLedPins[led], on ? HIGH : LOW);
             }
         }
+        programIndicator.advance();
     }
 }
 
 void cleanup(BelaContext* context, void* userData)
 {
+    if(wiPepper.program() == WiPepper::PgmSequencer) sendMidiByte(0xFC);
 }
