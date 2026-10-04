@@ -30,7 +30,13 @@ void readMidi()
     for(int i = 0; i < available; ++i) {
         const auto message = parser->getNextChannelMessage();
         if(message.getType() == kmmNoteOn)
-            wiPepper.midiNoteOn(message.getDataByte(0), message.getDataByte(1));
+            wiPepper.midiNoteOn(message.getDataByte(0), message.getDataByte(1), message.getChannel());
+        else if(message.getType() == kmmNoteOff)
+            wiPepper.midiNoteOff(message.getDataByte(0), message.getChannel());
+        else if(message.getType() == kmmControlChange)
+            wiPepper.midiControlChange(message.getDataByte(0), message.getDataByte(1), message.getChannel());
+        else if(message.getType() == kmmPitchBend)
+            wiPepper.midiPitchBend(message.getDataByte(0) | (message.getDataByte(1) << 7), message.getChannel());
     }
 }
 
@@ -175,6 +181,8 @@ void render(BelaContext* context, void* userData)
                     && inputPeak >= ledPeakThresholds[led];
                 if(wiPepper.program() == WiPepper::PgmSequencer && led == kLedCount - 1)
                     on = wiPepper.sequencerLed();
+                if(wiPepper.program() == WiPepper::PgmJuno)
+                    on = led < wiPepper.synthVoices();
                 if(programIndicator.active())
                     on = programIndicator.ledOn(led);
                 digitalWriteOnce(context, frame, kLedPins[led], on ? HIGH : LOW);

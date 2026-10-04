@@ -7,7 +7,7 @@ bool WiPepper::setup(float sampleRate, float controlSampleRate,
                      std::function<void(uint8_t)> midiOutput)
 {
     if(controlSampleRate == 0) controlSampleRate = sampleRate;
-    if(!std::isfinite(controlSampleRate) || controlSampleRate <= 0 || !resonator.setup(sampleRate))
+    if(!std::isfinite(controlSampleRate) || controlSampleRate <= 0 || !resonator.setup(sampleRate) || !juno.setup(sampleRate))
         return false;
     controlSampleRate_ = controlSampleRate;
     midiOutput_ = std::move(midiOutput);
@@ -31,13 +31,15 @@ void WiPepper::setPots(const std::array<float, 8>& pots)
         pots_[i] = std::isfinite(pots[i]) ? std::max(0.0f, std::min(1.0f, pots[i])) : 0;
     volume = pots_[0];
     resonator.setPots(pots_);
+    juno.setPots(pots_);
 }
 
 void WiPepper::pressButton(unsigned int button)
 {
     if(button == 0) {
         if(program_ == PgmSequencer && midiOutput_) midiOutput_(0xFC);
-        program_ = program_ == PgmSequencer ? PgmKarplusResonator : PgmSequencer;
+        juno.panic(); // Do not carry held notes, pedals or chorus tails across programs.
+        program_ = static_cast<Program>((program_ + 1) % ProgramCount);
         cvOutputs_ = {};
         stepCountdown_ = priorityCountdown_ = syncCountdown_ = 0;
         sequencerButton_ = false;
@@ -46,15 +48,36 @@ void WiPepper::pressButton(unsigned int button)
         sequencer.midiClock_ = false;
     } else if(program_ == PgmSequencer) {
         if(button == 1) sequencerButton_ = true;
+    } else if(program_ == PgmJuno) {
+        juno.pressButton(button);
     } else {
         resonator.pressButton(button);
     }
 }
 
-void WiPepper::midiNoteOn(unsigned int note, unsigned int velocity)
+void WiPepper::midiNoteOn(unsigned int note, unsigned int velocity, unsigned int channel)
 {
-    if(program_ == PgmSequencer && note <= 127 && velocity > 0 && velocity <= 127)
+    if(note > 127 || velocity > 127 || channel > 15) return;
+    if(!velocity) { midiNoteOff(note, channel); return; }
+    if(program_ == PgmSequencer)
         sequencer.assignNote(static_cast<int>(note) - 39);
+    else if(program_ == PgmJuno)
+        juno.noteOn(note, velocity, channel);
+}
+
+void WiPepper::midiNoteOff(unsigned int note, unsigned int channel)
+{
+    if(program_ == PgmJuno) juno.noteOff(note, channel);
+}
+
+void WiPepper::midiControlChange(unsigned int controller, unsigned int value, unsigned int channel)
+{
+    if(program_ == PgmJuno) juno.controlChange(controller, value, channel);
+}
+
+void WiPepper::midiPitchBend(unsigned int value, unsigned int channel)
+{
+    if(program_ == PgmJuno) juno.pitchBend(value, channel);
 }
 
 void WiPepper::processControls()
@@ -84,4 +107,6 @@ void WiPepper::process(const float* in, float* out)
     out[0] = out[1] = 0;
     if(program_ == PgmKarplusResonator)
         resonator.process(in[0], out[0], out[1]);
+    else if(program_ == PgmJuno)
+        juno.process(out[0], out[1]);
 }

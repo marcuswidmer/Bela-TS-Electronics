@@ -4,11 +4,20 @@ Button 0 (leftmost, digital pin 15) cycles between:
 
 - Program 0: `PgmSequencer`, the default, copied from `wi_modular/WiSequencer`.
 - Program 1: `PgmKarplusResonator`, the existing twelve-string resonator.
+- Program 2: `PgmJuno`, a six-voice JUNO-inspired MIDI synthesizer.
 
-At startup and after each selection, only the corresponding LED (0 or 1)
-flashes four times, with 150 ms on and 150 ms off. Afterward, program 1 shows
-the input peak meter; program 0 shows the sequencer step and priority countdowns
-on the last LED (index 9, digital pin 8), with the other LEDs off. Program-selection flashes take precedence. Button debouncing and program indication never block processing.
+At startup and after each selection, only the corresponding LED (0, 1, or 2)
+stays lit continuously until the next program selection. The program indication
+takes precedence over the input meter, sequencer countdown, and active-voice
+LED displays. Button debouncing and program indication never block processing.
+
+## Local GUI (no Bela required)
+
+Run `python3 projects/wi_pepper/simulator/run.py` from the repository root,
+then open **http://127.0.0.1:8765**. The frontplate provides interactive pots,
+buttons, and live LEDs using the real C++ programs. Audio and CV jacks are
+visible placeholders; their I/O is not implemented.
+See [simulator/README.md](simulator/README.md) for controls and setup.
 
 ## Sequencer (program 0)
 
@@ -34,6 +43,61 @@ Missing MIDI hardware does not prevent the programs from running.
 The local sequencer copy removes Bela logging, reserves space for up to 128
 assigned steps during setup, and resets the step index when replacing a sequence.
 MIDI input is consumed on the render thread to avoid concurrent sequence edits.
+
+## JUNO-inspired synthesizer (program 2)
+
+Connect a class-compliant USB MIDI keyboard to Bela's USB host port (or use a
+USB MIDI interface for a DIN keyboard), and listen to Pepper's stereo audio
+outputs. Press Button 0 twice from startup to select program 2. MIDI input
+uses `hw:1,0,0`, configured by `kMidiPort` in `render.cpp`; change that constant
+if your keyboard/interface enumerates at another ALSA address (`amidi -l`).
+Synth operation requires MIDI input only; unavailable MIDI output is harmless.
+
+The synth receives all 16 MIDI channels, tracks note ownership per channel,
+and uses standard MIDI pitches (A4 = note 69 = 440 Hz; no sequencer offset).
+Note Off and zero-velocity Note On release notes. CC64 operates the sustain
+pedal, CC1 increases pulse-width modulation, and pitch bend spans +/-2 semitones.
+CC123 releases all notes on its channel (respecting sustain), CC120 silences
+that channel and clears the shared chorus tail, and CC121 resets sustain,
+modulation and bend. Repeated notes retrigger their voice. When all six voices
+are occupied, a releasing voice is stolen first, otherwise the oldest voice.
+Button 3 is a global panic, useful if a keyboard disconnects with notes held.
+Program changes also clear synth voices, pedal state, bend and chorus tails.
+
+| Pot (zero-based) | Parameter |
+|---|---|
+| 0 | Master volume |
+| 1 | Low-pass cutoff, 40 Hz–16 kHz before modulation/sample-rate limiting |
+| 2 | Filter resonance |
+| 3 | Filter envelope depth, 0–5 octaves |
+| 4 | Attack, 2 ms–4 s |
+| 5 | Decay, 20 ms–3 s |
+| 6 | Sustain level |
+| 7 | Release, 20 ms–8 s |
+
+Decay/release times describe approximately 60 dB of exponential settling.
+Filter cutoff also has fixed half keyboard tracking. Start with pots at
+**70%, 60%, 20%, 30%, 5%, 35%, 70%, 30%**, respectively.
+
+| Button | Action |
+|---|---|
+| 0 | Next program (returns to sequencer) |
+| 1 | Cycle saw + pulse (default), saw, pulse |
+| 2 | Cycle chorus I (default), II, off |
+| 3 | Panic: silence all notes and clear the chorus |
+
+The DSP combines anti-aliased saw/pulse oscillators, a sub oscillator, light
+noise, a four-pole low-pass filter, one ADSR controlling amplitude and filter,
+a fixed high-pass stage, and stereo modulated-delay chorus. Parameters are
+smoothed, processing uses fixed storage, and output is bounded to [-1, 1].
+This is an original implementation inspired by the
+[Roland JUNO-106 architecture](https://support.roland.com/hc/en-us/articles/201966419-Juno-106-Technical-Specifications),
+not a circuit-accurate emulation or Roland software. The chorus is a clean
+modulated delay, not a model of the original analog delay circuitry.
+
+Audio input is unused in this program and CV outputs stay zero. The local
+GUI shows the new program and controls, but desktop audio/MIDI transport
+remains disconnected as before; keyboard playback is implemented on Bela.
 
 ## Resonator (program 1)
 
@@ -98,17 +162,21 @@ pot values, button events, and per-sample audio processing.
 From the repository root:
 
 ```sh
-g++ -std=c++14 -fsyntax-only -Iinclude -I. projects/wi_pepper/render.cpp projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp
+g++ -std=c++14 -fsyntax-only -Iinclude -I. projects/wi_pepper/render.cpp projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp
 g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/resonator_test.cc projects/wi_pepper/KarplusResonator.cpp -o /tmp/wi-pepper-resonator-test
 /tmp/wi-pepper-resonator-test
-g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/programs_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp -o /tmp/wi-pepper-programs-test
+g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/programs_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-programs-test
 /tmp/wi-pepper-programs-test
+g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/juno_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-juno-test
+/tmp/wi-pepper-juno-test
 ```
 
 Tests cover initialization, silence, pluck energy, stereo spread, extreme
 controls, changing note sets, sustain, clearing, and dry routing at four
 sample rates. `.cc` keeps the test out of Bela's recursive `.cpp` build.
 Program tests cover the default selection, switching, MIDI assignment and resync,
-CV clearing, audio routing, and four-flash indication at multiple sample rates.
+CV clearing, audio routing, and continuous program indication at multiple sample rates.
+Synth tests cover pitch/bend, sustain, voice stealing, release, chorus, extreme
+controls, program routing, and allocation-free processing at four sample rates.
 Physical pot/button response, CV voltages, MIDI hardware, and Bela CPU/underruns
 still require a board test.

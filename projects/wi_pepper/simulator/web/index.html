@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#121719">
+  <title>Pepper · Local instrument</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><a class="wordmark" href="/">bela<span> / </span>pepper</a><span class="session"><i id="connection-dot"></i><span id="connection">Connecting…</span></span></header>
+  <main>
+    <section class="instrument" aria-label="Pepper front panel">
+      <div class="panel">
+        <i class="screw top-left"></i><i class="screw top-right"></i><i class="screw bottom-left"></i><i class="screw bottom-right"></i>
+        <div class="panel-title">PEPPER</div>
+        <div class="led-strip" id="leds" role="img" aria-label="Ten LEDs, all off"></div>
+        <div class="led-caption"><span>0</span><span>9</span></div>
+        <div class="cv-bank cv-in"><h2>IN</h2><div id="cv-inputs"></div></div>
+        <div class="cv-bank cv-out"><h2>OUT</h2><div id="cv-outputs"></div></div>
+        <div class="knob-grid" id="knobs"></div>
+        <div class="audio-bank audio-in"><span>AUDIO IN</span><div class="audio-jack"><b>L</b><i class="jack" title="Audio input L — not connected"></i></div><div class="audio-jack"><b>R</b><i class="jack" title="Audio input R — not connected"></i></div></div>
+        <div class="audio-bank audio-out"><span>AUDIO OUT</span><div class="audio-jack"><i class="jack" title="Audio output L — not connected"></i><b>L</b></div><div class="audio-jack"><i class="jack" title="Audio output R — not connected"></i><b>R</b></div></div>
+        <div class="buttons" id="buttons"></div>
+        <div class="panel-footer">BELA.IO</div>
+      </div>
+      <p class="instrument-caption"><span class="caption-line"></span> A familiar instrument. Wherever you are.</p>
+    </section>
+    <aside class="guide">
+      <div class="eyebrow">LOCAL INSTRUMENT / 01</div>
+      <h1>Your Pepper,<br><em>within reach.</em></h1>
+      <p class="intro">Turn a pot. Press a button. Follow the lights.<br>The instrument runs right here on your computer.</p>
+      <section class="program-card" aria-labelledby="program-name">
+        <div class="card-top"><span>ACTIVE PROGRAM</span><span id="program-number">00 / 03</span></div>
+        <h2 id="program-name" aria-live="polite">Sequencer</h2>
+        <p id="program-description">A changing sequence of notes, with speed, pattern and variation at your fingertips.</p>
+        <div class="program-footer"><span class="program-pip"></span><span id="led-description">LED 9 · step & priority countdown</span></div>
+      </section>
+      <section class="control-guide"><div class="section-label">BUTTONS <span>left → right</span></div><div id="button-guide"></div></section>
+      <section class="connections"><div class="section-label">CONNECTIONS <span class="badge">NOT CONNECTED</span></div><p>Audio · 2 in / 2 out<br>CV · 8 in / 8 out</p><p class="muted">The jacks are placeholders for future I/O. This version is silent; no microphone or audio device is used.</p></section>
+      <p class="help">Drag a knob up or down, or use its slider. Focus a control and use the arrow keys. Button 0 switches programs.</p>
+      <p id="error" role="alert" hidden></p>
+    </aside>
+  </main>
+  <footer class="page-footer"><span>PEPPER / DESKTOP STUDY</span><span>8 POTS · 4 BUTTONS · 10 LEDs</span></footer>
+</body>
+</html>

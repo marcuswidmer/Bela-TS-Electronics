@@ -58,6 +58,8 @@ int main()
     for(auto cv : pepper.cvOutputs()) assert(cv == 0);
     assert(std::abs(out[0] - 0.25f) < 1e-4f && out[0] == out[1]);
     pepper.pressButton(0);
+    assert(pepper.program() == WiPepper::PgmJuno);
+    pepper.pressButton(0);
     assert(pepper.program() == WiPepper::PgmSequencer);
     pepper.processControls();
     assert(std::abs(pepper.cvOutputs()[0] - 25.0f/60) < 1e-6f);
@@ -100,25 +102,18 @@ int main()
     for(float rate : {22050.0f, 44100.0f, 48000.0f, 96000.0f}) {
         ProgramIndicator indicator;
         indicator.setup(rate);
-        for(unsigned int program = 0; program < 2; ++program) {
+        for(unsigned int program = 0; program < WiPepper::ProgramCount; ++program) {
             indicator.select(program);
-            unsigned int flashes = 0, samples = 0;
-            bool wasOn = false;
-            while(indicator.active()) {
-                const bool on = indicator.ledOn(program);
-                if(on && !wasOn) ++flashes;
+            for(unsigned int sample = 0; sample < static_cast<unsigned int>(rate * 2); ++sample) {
+                assert(indicator.active());
                 for(unsigned int led = 0; led < 10; ++led)
-                    if(led != program) assert(!indicator.ledOn(led));
-                wasOn = on;
+                    assert(indicator.ledOn(led) == (led == program));
                 indicator.advance();
-                ++samples;
             }
-            assert(flashes == 4);
-            assert(samples == 8 * static_cast<unsigned int>(rate * 0.15f));
         }
         indicator.select(0);
         indicator.advance();
-        indicator.select(1); // Switching mid-blink restarts the new indication.
+        indicator.select(1); // Switching immediately moves the steady indication.
         assert(!indicator.ledOn(0) && indicator.ledOn(1));
     }
     std::cout << "Program, MIDI, CV and indicator tests passed\n";

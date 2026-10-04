@@ -1,30 +1,19 @@
 #pragma once
 
-#include <algorithm>
-
-// Four 150 ms flashes. Advance once per digital frame; no blocking delays.
+// Keep the selected program LED lit until another program is selected.
 class ProgramIndicator {
 public:
-    void setup(float sampleRate) {
-        halfPeriod_ = std::max(1u, static_cast<unsigned int>(sampleRate * 0.15f));
-        phase_ = 8;
-        remaining_ = 0;
-    }
+    void setup(float /*sampleRate*/) { selected_ = false; }
     void select(unsigned int program) {
         program_ = program;
-        phase_ = 0;
-        remaining_ = halfPeriod_;
+        selected_ = true;
     }
-    bool active() const { return phase_ < 8; }
+    bool active() const { return selected_; }
     bool ledOn(unsigned int led) const {
-        return active() && phase_ % 2 == 0 && led == program_;
+        return selected_ && led == program_;
     }
-    void advance() {
-        if(active() && --remaining_ == 0) {
-            ++phase_;
-            remaining_ = halfPeriod_;
-        }
-    }
+    void advance() {}
 private:
-    unsigned int program_ = 0, phase_ = 8, remaining_ = 0, halfPeriod_ = 1;
+    unsigned int program_ = 0;
+    bool selected_ = false;
 };
