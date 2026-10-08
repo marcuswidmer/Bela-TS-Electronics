@@ -6,3 +6,7 @@
 @media(max-width:440px){main{padding:0 16px}.instrument{height:575px;overflow:clip}.panel{transform:scale(.86);transform-origin:top center;flex-shrink:0}.instrument-caption{margin-top:-64px}.topbar{padding:0 18px}.wordmark{font-size:21px}.session{font-size:10px}.guide{max-width:352px}h1{font-size:36px}}
 @media(max-width:365px){.panel{transform:scale(.76)}.instrument{height:510px}.instrument-caption{margin-top:-125px;font-size:8px}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+#audio-toggle{border:1px solid var(--lime);border-radius:5px;padding:8px 14px;background:#2c3630;color:var(--lime);cursor:pointer}#keyboard{display:flex;margin:14px 0;gap:2px;touch-action:none}.piano-key{flex:1;min-width:0;height:88px;background:#eee9dd;color:#253032;border:1px solid #7d877b;border-radius:0 0 4px 4px;font-size:10px;padding:60px 0 5px;touch-action:none;user-select:none;cursor:pointer}.piano-key.black{background:#22292b;color:#eee9dd;height:62px;padding-top:35px}.piano-key.held{background:var(--lime);color:#18201b}.piano-key:disabled{opacity:.5;cursor:default}
+
+.octave-controls{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px}.octave-controls button{background:#2c3630;color:var(--lime);border:1px solid #596451;border-radius:4px;padding:6px 9px;cursor:pointer;font-size:12px}.octave-controls button:disabled{opacity:.4;cursor:default}.octave-controls output{font-size:12px}

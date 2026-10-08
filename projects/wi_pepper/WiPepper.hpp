@@ -23,6 +23,7 @@ public:
     void processControls(); // Call at controlSampleRate (Bela analog rate).
     void process(const float* in, float* out);
     bool sequencerLed() const { return program_ == PgmSequencer && sequencerLed_; }
+    bool directMidiMode() const { return program_ == PgmSequencer && directMidiMode_; }
     Program program() const { return program_; }
     const std::array<float, 4>& cvOutputs() const { return cvOutputs_; }
 
@@ -36,6 +37,9 @@ private:
     std::function<void(uint8_t)> midiOutput_;
     float controlSampleRate_ = 0, speedSmoothed_ = 0;
     int stepCountdown_ = 0, priorityCountdown_ = 0, syncCountdown_ = 0;
+    bool directMidiMode_ = false;
+    float directPitch_ = 0;
+    int directTriggerCountdown_ = 0;
     bool sequencerButton_ = false;
     bool sequencerLed_ = false;
 };

@@ -181,9 +181,11 @@ void render(BelaContext* context, void* userData)
                     && inputPeak >= ledPeakThresholds[led];
                 if(wiPepper.program() == WiPepper::PgmSequencer && led == kLedCount - 1)
                     on = wiPepper.sequencerLed();
+                if(wiPepper.program() == WiPepper::PgmSequencer && led == 3)
+                    on = wiPepper.directMidiMode();
                 if(wiPepper.program() == WiPepper::PgmJuno)
                     on = led < wiPepper.synthVoices();
-                if(programIndicator.active())
+                if(led < WiPepper::ProgramCount && programIndicator.active())
                     on = programIndicator.ledOn(led);
                 digitalWriteOnce(context, frame, kLedPins[led], on ? HIGH : LOW);
             }

@@ -6,10 +6,10 @@ Button 0 (leftmost, digital pin 15) cycles between:
 - Program 1: `PgmKarplusResonator`, the existing twelve-string resonator.
 - Program 2: `PgmJuno`, a six-voice JUNO-inspired MIDI synthesizer.
 
-At startup and after each selection, only the corresponding LED (0, 1, or 2)
-stays lit continuously until the next program selection. The program indication
-takes precedence over the input meter, sequencer countdown, and active-voice
-LED displays. Button debouncing and program indication never block processing.
+LEDs 0–2 are reserved for program indication: the selected program LED stays
+lit continuously and the other two stay off. LEDs 3–9 retain their normal
+activity displays: input peak metering in program 1, sequencer step and priority
+countdowns on LED 9 in program 0, and active-voice count in program 2. Button debouncing and program indication never block processing.
 
 ## Local GUI (no Bela required)
 
@@ -23,8 +23,15 @@ See [simulator/README.md](simulator/README.md) for controls and setup.
 
 Pots 0–2 match `WiModular`'s `PgmSequencer` mapping: speed, default sequence
 fraction / assigned-sequence substeps, and random sequence / assignment freeze.
-Button 1 requests MIDI resync (Stop, Start, Clock at the next internal step).
-Buttons 2–3 are unused in this program. Audio outputs are silent.
+The second button (index 1) toggles direct MIDI-to-CV mode; LED 3 stays lit
+while it is enabled. Each positive-velocity MIDI Note On sets CV0 to
+`clamp((note - 39) / 60, 0, 1)` and triggers CV1 for 10 ms. The latest note
+wins, and pitch remains after key release. Note Off and velocity-zero Note On
+do not trigger. CV2–3 stay zero. Sequencing and outgoing MIDI Clock pause in
+this mode; entering sends MIDI Stop. Toggling back resumes the saved sequence.
+Program changes reset direct mode to off. Pots have no effect in direct mode.
+The third button (index 2) requests MIDI resync in sequencer mode (Stop, Start,
+Clock at the next internal step). Button 3 is unused. Audio outputs are silent.
 
 Analog output 0 carries pitch (note / 60, clamped to 0–1), output 1 carries
 10 ms step/substep gates, and output 2 retains the source's sync output
@@ -37,7 +44,7 @@ assign notes with an offset of 39. Note 0 ticks the sequencer externally;
 regular incoming MIDI Clock is not used, matching the source. Output Clock
 is six pulses per internal step. Leaving the sequencer sends Stop, clears CV
 outputs, and pauses sequence processing. Returning preserves assigned notes
-and restores internal timing; Button 1 resyncs connected equipment.
+and restores internal timing; Button 2 resyncs connected equipment.
 Missing MIDI hardware does not prevent the programs from running.
 
 The local sequencer copy removes Bela logging, reserves space for up to 128
@@ -55,12 +62,14 @@ Synth operation requires MIDI input only; unavailable MIDI output is harmless.
 
 The synth receives all 16 MIDI channels, tracks note ownership per channel,
 and uses standard MIDI pitches (A4 = note 69 = 440 Hz; no sequencer offset).
-Note Off and zero-velocity Note On release notes. CC64 operates the sustain
-pedal, CC1 increases pulse-width modulation, and pitch bend spans +/-2 semitones.
-CC123 releases all notes on its channel (respecting sustain), CC120 silences
-that channel and clears the shared chorus tail, and CC121 resets sustain,
-modulation and bend. Repeated notes retrigger their voice. When all six voices
-are occupied, a releasing voice is stolen first, otherwise the oldest voice.
+Note On starts or retriggers a voice immediately. Note Off and zero-velocity
+Note On release the matching note on its MIDI channel, following the Release
+pot. Up to six notes can sound together; new notes prefer idle voices, then
+quiet releasing voices, then steal the oldest voice.
+CC1 adds PWM modulation, and pitch bend spans +/-2 semitones. CC64 holds
+released notes while the sustain pedal is down. CC123 releases the channel's
+voices; CC120 silences that channel and clears the shared chorus tail.
+CC121 resets sustain, modulation and bend.
 Button 3 is a global panic, useful if a keyboard disconnects with notes held.
 Program changes also clear synth voices, pedal state, bend and chorus tails.
 
@@ -86,9 +95,10 @@ Filter cutoff also has fixed half keyboard tracking. Start with pots at
 | 2 | Cycle chorus I (default), II, off |
 | 3 | Panic: silence all notes and clear the chorus |
 
-The DSP combines anti-aliased saw/pulse oscillators, a sub oscillator, light
+The DSP combines anti-aliased saw/pulse oscillators, a prominent square sub oscillator one octave below the played note, light
 noise, a four-pole low-pass filter, one ADSR controlling amplitude and filter,
-a fixed high-pass stage, and stereo modulated-delay chorus. Parameters are
+a fixed high-pass stage, and stereo modulated-delay chorus. The chorus uses a 50% wet blend with
+a widened side signal (1.5× in mode I, 1.8× in mode II); the dry signal stays centered. Parameters are
 smoothed, processing uses fixed storage, and output is bounded to [-1, 1].
 This is an original implementation inspired by the
 [Roland JUNO-106 architecture](https://support.roland.com/hc/en-us/articles/201966419-Juno-106-Technical-Specifications),
@@ -176,7 +186,9 @@ controls, changing note sets, sustain, clearing, and dry routing at four
 sample rates. `.cc` keeps the test out of Bela's recursive `.cpp` build.
 Program tests cover the default selection, switching, MIDI assignment and resync,
 CV clearing, audio routing, and continuous program indication at multiple sample rates.
-Synth tests cover pitch/bend, sustain, voice stealing, release, chorus, extreme
+Synth tests cover pitch/bend, polyphony and sustain, clearing, release, chorus, extreme
 controls, program routing, and allocation-free processing at four sample rates.
+The keyboard test covers immediate note onset, channel-specific release,
+sustain pedal, retriggering, and voice stealing at four sample rates.
 Physical pot/button response, CV voltages, MIDI hardware, and Bela CPU/underruns
 still require a board test.

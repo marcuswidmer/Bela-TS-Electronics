@@ -136,6 +136,28 @@ int main()
         return peak;
     };
     assert(spectralPeak() == 440);
+    // The one-octave-down sub must be audible, not just present in the mix.
+    {
+        double subReal = 0, subImag = 0, mainReal = 0, mainImag = 0;
+        for(unsigned int i = 0; i < 44100; ++i) {
+            float l, r; synth.process(l, r);
+            const double phase = 2 * 3.141592653589793 * i / 44100;
+            subReal += l * std::cos(220 * phase); subImag += l * std::sin(220 * phase);
+            mainReal += l * std::cos(440 * phase); mainImag += l * std::sin(440 * phase);
+        }
+        assert(std::hypot(subReal, subImag) > .5 * std::hypot(mainReal, mainImag));
+    }
+    // Chorus supplies a substantial side signal; bypass remains mono.
+    {
+        double monoSide = 0; run(synth, 44100, &monoSide);
+        assert(monoSide < 1e-10);
+        synth.pressButton(2); run(synth, 44100);
+        double side = 0;
+        const double energy = run(synth, 44100, &side);
+        assert(side > .1 * energy);
+        synth.pressButton(2); synth.pressButton(2); run(synth, 44100);
+    }
+
     synth.pitchBend(16383); run(synth, 1000);
     const auto bent = spectralPeak();
     assert(bent >= 493 && bent <= 494);

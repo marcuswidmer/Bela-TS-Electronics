@@ -57,7 +57,7 @@ bool JunoSynth::setup(float sampleRate)
     resonance_ = pots_[2];
     envDepth_ = pots_[3];
     volume_ = pots_[0];
-    chorusMix_ = .35f;
+    chorusMix_ = .5f;
     return true;
 }
 
@@ -160,7 +160,7 @@ void JunoSynth::controlChange(unsigned int controller, unsigned int value, unsig
     if(controller == 123) {
         for(auto& v : voices_) if(v.channel == channel && v.stage != Idle) {
             v.held = false;
-            if(!sustain_[channel]) v.stage = Release;
+            v.stage = Release;
         }
     }
     if(controller == 120) {
@@ -228,7 +228,7 @@ void JunoSynth::process(float& left, float& right)
         const float square = pulse(v.phase, v.increment, width);
         const float sub = pulse(v.subPhase, v.increment * .5f, .5f);
         const float wave = waveform_ == 1 ? saw : waveform_ == 2 ? square : .5f * (saw + square);
-        const float oscillator = .7f * wave + .25f * sub + .015f * noise;
+        const float oscillator = .65f * wave + .45f * sub + .015f * noise;
         v.phase += v.increment;
         if(v.phase >= 1) v.phase -= 1;
         v.subPhase += v.increment * .5f;
@@ -257,10 +257,14 @@ void JunoSynth::process(float& left, float& right)
     const float depth = chorusMode_ == 2 ? .003f : .0018f;
     const float wetL = readChorus(sampleRate_ * (.012f + depth * mod));
     const float wetR = readChorus(sampleRate_ * (.012f - depth * mod));
-    chorusMix_ += smoothing_ * ((chorusMode_ ? .35f : 0) - chorusMix_);
+    chorusMix_ += smoothing_ * ((chorusMode_ ? .5f : 0) - chorusMix_);
     chorusWrite_ = (chorusWrite_ + 1) % chorus_.size();
-    const float l = volume_ * ((1 - chorusMix_) * hpOutput_ + chorusMix_ * wetL);
-    const float r = volume_ * ((1 - chorusMix_) * hpOutput_ + chorusMix_ * wetR);
+    // Keep the dry voice centered and widen only the chorus side signal.
+    const float wetMid = .5f * (wetL + wetR);
+    const float wetSide = .5f * (wetL - wetR) * (chorusMode_ == 2 ? 1.8f : 1.5f);
+    const float center = (1 - chorusMix_) * hpOutput_ + chorusMix_ * wetMid;
+    const float l = volume_ * (center + chorusMix_ * wetSide);
+    const float r = volume_ * (center - chorusMix_ * wetSide);
     left = clamp(l / (1 + .2f * std::abs(l)), -1, 1);
     right = clamp(r / (1 + .2f * std::abs(r)), -1, 1);
 }

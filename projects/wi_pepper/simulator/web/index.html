@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#121719">
   <title>Pepper · Local instrument</title>
   <link rel="stylesheet" href="style.css">
-  <script src="app.js" defer></script>
+  <script src="app.js?v=audio-3" defer></script>
 </head>
 <body>
   <header class="topbar"><a class="wordmark" href="/">bela<span> / </span>pepper</a><span class="session"><i id="connection-dot"></i><span id="connection">Connecting…</span></span></header>
@@ -21,7 +21,7 @@
         <div class="cv-bank cv-out"><h2>OUT</h2><div id="cv-outputs"></div></div>
         <div class="knob-grid" id="knobs"></div>
         <div class="audio-bank audio-in"><span>AUDIO IN</span><div class="audio-jack"><b>L</b><i class="jack" title="Audio input L — not connected"></i></div><div class="audio-jack"><b>R</b><i class="jack" title="Audio input R — not connected"></i></div></div>
-        <div class="audio-bank audio-out"><span>AUDIO OUT</span><div class="audio-jack"><i class="jack" title="Audio output L — not connected"></i><b>L</b></div><div class="audio-jack"><i class="jack" title="Audio output R — not connected"></i><b>R</b></div></div>
+        <div class="audio-bank audio-out"><span>AUDIO OUT</span><div class="audio-jack"><i class="jack" title="Audio output L — browser playback"></i><b>L</b></div><div class="audio-jack"><i class="jack" title="Audio output R — browser playback"></i><b>R</b></div></div>
         <div class="buttons" id="buttons"></div>
         <div class="panel-footer">BELA.IO</div>
       </div>
@@ -38,7 +38,14 @@
         <div class="program-footer"><span class="program-pip"></span><span id="led-description">LED 9 · step & priority countdown</span></div>
       </section>
       <section class="control-guide"><div class="section-label">BUTTONS <span>left → right</span></div><div id="button-guide"></div></section>
-      <section class="connections"><div class="section-label">CONNECTIONS <span class="badge">NOT CONNECTED</span></div><p>Audio · 2 in / 2 out<br>CV · 8 in / 8 out</p><p class="muted">The jacks are placeholders for future I/O. This version is silent; no microphone or audio device is used.</p></section>
+      <section class="connections">
+        <div class="section-label">AUDIO & MIDI</div>
+        <button id="audio-toggle" type="button">Enable audio</button>
+        <p id="audio-status" role="status">Audio off</p>
+        <div class="octave-controls"><button id="octave-down" type="button" aria-label="Lower keyboard octave">− Octave</button><output id="octave-range" aria-live="polite">C4–C5</output><button id="octave-up" type="button" aria-label="Raise keyboard octave">+ Octave</button></div>
+        <div id="keyboard" aria-label="MIDI keyboard C4 to C5"></div>
+        <p class="muted">Play with mouse or touch, or A W S E D F T G Y H U J K. Z/X shifts octave. Select JUNO with Button 0 and raise Volume (pot 0). Release a key to release its note. Button 3 stops all notes. Audio input and CV remain disconnected.</p>
+      </section>
       <p class="help">Drag a knob up or down, or use its slider. Focus a control and use the arrow keys. Button 0 switches programs.</p>
       <p id="error" role="alert" hidden></p>
     </aside>

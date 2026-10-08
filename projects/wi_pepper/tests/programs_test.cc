@@ -26,7 +26,7 @@ int main()
     }
     for(auto byte : midi) sawClock |= byte == 0xF8;
     assert(sawGate && sawClock);
-    pepper.pressButton(1);
+    pepper.pressButton(2);
     for(int i = 0; i < 3000; ++i) pepper.processControls();
     bool sawResync = false;
     for(unsigned int i = 0; i + 2 < midi.size(); ++i)
@@ -68,7 +68,7 @@ int main()
 
     // Optional MIDI callback and repeated setup must be safe.
     assert(pepper.setup(48000, 1000));
-    pepper.pressButton(1);
+    pepper.pressButton(2);
     for(int i = 0; i < 4000; ++i) pepper.processControls();
     assert(pepper.program() == WiPepper::PgmSequencer);
     assert(!pepper.setup(0));
@@ -83,7 +83,7 @@ int main()
     }
     pepper.processControls();
     assert(!pepper.sequencerLed());
-    pepper.pressButton(1);
+    pepper.pressButton(2);
     for(int i = 0; i < 1000; ++i) {
         pepper.processControls();
         assert(pepper.sequencerLed());
@@ -91,13 +91,54 @@ int main()
     }
     pepper.processControls();
     assert(!pepper.sequencerLed());
-    pepper.pressButton(1);
+    pepper.pressButton(2);
     pepper.processControls();
     assert(pepper.sequencerLed());
     pepper.pressButton(0);
     assert(!pepper.sequencerLed());
     pepper.pressButton(0);
     assert(!pepper.sequencerLed());
+
+    // Direct MIDI mode pauses sequencing and preserves the assigned sequence.
+    assert(pepper.setup(44100, 1000, [&](uint8_t b) { midi.push_back(b); }));
+    pots[2] = 0;
+    pepper.setPots(pots);
+    pepper.midiNoteOn(60, 100);
+    pepper.processControls();
+    pepper.pressButton(1);
+    assert(pepper.directMidiMode());
+    const auto clocksBefore = midi.size();
+    pepper.midiNoteOn(72, 100);
+    for(int i = 0; i < 10; ++i) {
+        pepper.processControls();
+        assert(std::abs(pepper.cvOutputs()[0] - 33.0f/60) < 1e-6f);
+        assert(pepper.cvOutputs()[1] == 1);
+        assert(!pepper.sequencerLed());
+    }
+    pepper.processControls();
+    assert(pepper.cvOutputs()[1] == 0);
+    pepper.midiNoteOff(72);
+    pepper.midiNoteOn(75, 0);
+    pepper.processControls();
+    assert(std::abs(pepper.cvOutputs()[0] - 33.0f/60) < 1e-6f);
+    assert(pepper.cvOutputs()[1] == 0);
+    pepper.midiNoteOn(127, 100);
+    pepper.processControls();
+    assert(pepper.cvOutputs()[0] == 1);
+    pepper.midiNoteOn(0, 100);
+    pepper.processControls();
+    assert(pepper.cvOutputs()[0] == 0);
+    assert(pepper.cvOutputs()[1] == 1);
+    assert(midi.size() == clocksBefore);
+    pepper.pressButton(1);
+    assert(!pepper.directMidiMode());
+    pepper.processControls();
+    assert(std::abs(pepper.cvOutputs()[0] - 21.0f/60) < 1e-6f);
+    pepper.pressButton(1);
+    pepper.midiNoteOn(64, 100);
+    pepper.pressButton(0);
+    assert(!pepper.directMidiMode());
+    for(float cv : pepper.cvOutputs()) assert(cv == 0);
 
     for(float rate : {22050.0f, 44100.0f, 48000.0f, 96000.0f}) {
         ProgramIndicator indicator;

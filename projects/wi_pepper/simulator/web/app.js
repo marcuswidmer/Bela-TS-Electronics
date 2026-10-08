@@ -9,7 +9,7 @@ const programs = [
     pots: ['Volume', 'Excitation', 'Decay', 'Brightness', 'Transpose', 'Dry / wet', 'Detune', 'Width'],
     buttons: ['Next program', 'Note set', 'Sustain', 'Clear'],
     led: 'LEDs 0–9 · input meter (no audio connected)' },
-  { name: 'JUNO', description: 'Six voices, warm oscillator layers and stereo chorus. Connect a MIDI keyboard to the real Pepper to play. Desktop audio and MIDI remain disconnected.',
+  { name: 'JUNO', description: 'Six voices, warm oscillator layers and stereo chorus. Enable audio, raise Volume, and play the keyboard below.',
     pots: ['Volume', 'Cutoff', 'Resonance', 'Env depth', 'Attack', 'Decay', 'Sustain', 'Release'],
     buttons: ['Next program', 'Waveform', 'Chorus', 'Panic'],
     led: 'LEDs 0–5 · active synth voices' }
@@ -25,6 +25,7 @@ function connection(isOnline) {
   document.querySelector('#connection-dot').classList.toggle('online', online);
   document.querySelector('#connection').textContent = online ? 'Local simulation · running' : 'Simulator disconnected';
   for (const control of [...buttons.map(b => b.button), ...knobs.map(k => k.slider)]) control.disabled = !online;
+  for (const key of noteButtons.values()) key.disabled = !online || program !== 2;
   for (const knob of knobs) knob.dial.setAttribute('aria-disabled', String(!online));
 }
 function sendControl(command) {
@@ -137,12 +138,14 @@ for (let i = 0; i < 4; i++) {
   // Support activation by assistive technology without pointer/key events.
   button.addEventListener('click', event => { if (event.detail === 0 && !pressed.has(i)) { press(i); release(i); } });
 }
-function releaseAll() { for (const i of pressed.keys()) release(i); }
+function releaseAll() { for (const i of pressed.keys()) release(i); releaseNotes(); }
 window.addEventListener('blur', releaseAll);
 document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAll(); });
 
 function showProgram(index) {
+  if (program !== index) releaseNotes();
   program = index;
+  for (const key of noteButtons.values()) key.disabled = !online || program !== 2;
   const info = programs[index];
   document.querySelector('#program-name').textContent = info.name;
   document.querySelector('#program-number').textContent = `0${index} / 0${programs.length}`;
@@ -181,6 +184,145 @@ async function poll() {
   }
   setTimeout(poll, online ? 25 : 1000);
 }
+
+
+// Keep the DSP clock on the host; schedule its stereo frames with Web Audio.
+let audioContext = null, audioEnabled = false, audioCursor = null, audioTime = 0;
+let audioGeneration = 0;
+const audioToggle = document.querySelector('#audio-toggle');
+const audioStatus = document.querySelector('#audio-status');
+async function streamAudio(generation) {
+  try {
+    const response = await fetch(`/api/audio?cursor=${audioCursor ?? Number.MAX_SAFE_INTEGER}`, {
+      cache: 'no-store', signal: AbortSignal.timeout(2000)
+    });
+    if (!response.ok) throw new Error('Audio stream unavailable');
+    const samples = new Float32Array(await response.arrayBuffer());
+    if (!audioEnabled || generation !== audioGeneration) return;
+    audioCursor = Number(response.headers.get('X-Audio-Cursor'));
+    const frames = samples.length / 2;
+    if (frames && audioContext.state === 'running') {
+      const buffer = audioContext.createBuffer(2, frames, 44100);
+      for (let channel = 0; channel < 2; channel++) {
+        const output = buffer.getChannelData(channel);
+        for (let i = 0; i < frames; i++) output[i] = samples[2 * i + channel];
+      }
+      // Recover from stalls instead of queuing stale sound indefinitely.
+      if (audioTime < audioContext.currentTime || audioTime > audioContext.currentTime + .25)
+        audioTime = audioContext.currentTime + .07;
+      const source = audioContext.createBufferSource();
+      source.buffer = buffer; source.connect(audioContext.destination);
+      source.start(audioTime); audioTime += frames / 44100;
+    }
+    audioStatus.textContent = audioContext.state === 'running' ? 'Stereo audio playing' : 'Audio paused by browser · click Disable, then Enable';
+    setTimeout(() => streamAudio(generation), 20);
+  } catch (error) {
+    if (generation !== audioGeneration) return;
+    audioEnabled = false;
+    audioToggle.textContent = 'Enable audio';
+    audioStatus.textContent = error.message;
+    if (audioContext) { await audioContext.close(); audioContext = null; }
+    releaseNotes();
+  }
+}
+audioToggle.addEventListener('click', async () => {
+  audioToggle.disabled = true;
+  try {
+    if (audioEnabled) {
+      audioEnabled = false; audioGeneration++;
+      await audioContext.close(); audioContext = null; releaseNotes();
+      audioToggle.textContent = 'Enable audio'; audioStatus.textContent = 'Audio off';
+    } else {
+      audioStatus.textContent = 'Starting audio…';
+      if (!audioContext) audioContext = new AudioContext({ latencyHint: 'interactive' });
+      await audioContext.resume();
+      audioEnabled = true; audioCursor = null; audioTime = 0;
+      audioToggle.textContent = 'Disable audio';
+      streamAudio(++audioGeneration);
+    }
+  } catch (error) { audioStatus.textContent = error.message; }
+  finally { audioToggle.disabled = false; }
+});
+
+let octaveOffset = 0;
+const noteOwners = new Map(), noteButtons = new Map();
+const keyCodes = ['KeyA', 'KeyW', 'KeyS', 'KeyE', 'KeyD', 'KeyF', 'KeyT', 'KeyG', 'KeyY', 'KeyH', 'KeyU', 'KeyJ', 'KeyK'];
+const noteNames = ['C4', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B', 'C5'];
+function noteDown(note, owner) {
+  if (!online || program !== 2 || noteOwners.has(owner)) return;
+  const alreadyHeld = [...noteOwners.values()].includes(note);
+  noteOwners.set(owner, note);
+  noteButtons.get(note).classList.add('held');
+  noteButtons.get(note).setAttribute('aria-pressed', 'true');
+  if (!alreadyHeld) sendControl({ type: 'note', index: note + octaveOffset * 12, velocity: 100 });
+}
+function noteUp(owner) {
+  const note = noteOwners.get(owner);
+  if (note === undefined) return;
+  noteOwners.delete(owner);
+  if (![...noteOwners.values()].includes(note)) {
+    noteButtons.get(note).classList.remove('held');
+    noteButtons.get(note).setAttribute('aria-pressed', 'false');
+    sendControl({ type: 'note', index: note + octaveOffset * 12, velocity: 0 });
+  }
+}
+function releaseNotes() { for (const owner of [...noteOwners.keys()]) noteUp(owner); }
+for (let i = 0; i < 13; i++) {
+  const note = 60 + i, button = document.createElement('button');
+  button.type = 'button'; button.className = [1, 3, 6, 8, 10].includes(i) ? 'piano-key black' : 'piano-key';
+  button.textContent = noteNames[i];
+  button.setAttribute('aria-label', `${noteNames[i]}, MIDI note ${note}, ${keyCodes[i].slice(3)}`);
+  button.setAttribute('aria-pressed', 'false');
+  document.querySelector('#keyboard').append(button); noteButtons.set(note, button);
+  button.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    event.preventDefault(); button.focus(); button.setPointerCapture(event.pointerId);
+    noteDown(note, `pointer-${event.pointerId}`);
+  });
+  for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'])
+    button.addEventListener(event, e => noteUp(`pointer-${e.pointerId}`));
+  button.addEventListener('keydown', event => {
+    if ([' ', 'Enter'].includes(event.key)) { event.preventDefault(); noteDown(note, `focus-${note}`); }
+  });
+  button.addEventListener('keyup', event => {
+    if ([' ', 'Enter'].includes(event.key)) { event.preventDefault(); noteUp(`focus-${note}`); }
+  });
+  button.addEventListener('blur', () => noteUp(`focus-${note}`));
+  button.addEventListener('click', event => {
+    if (event.detail === 0 && !noteOwners.size) {
+      noteDown(note, `assist-${note}`); setTimeout(() => noteUp(`assist-${note}`), 150);
+    }
+  });
+}
+function shiftOctave(amount) {
+  releaseNotes();
+  octaveOffset = Math.max(-5, Math.min(4, octaveOffset + amount));
+  const low = 4 + octaveOffset;
+  document.querySelector('#octave-range').textContent = `C${low}–C${low + 1}`;
+  document.querySelector('#keyboard').setAttribute('aria-label', `MIDI keyboard C${low} to C${low + 1}`);
+  document.querySelector('#octave-down').disabled = octaveOffset === -5;
+  document.querySelector('#octave-up').disabled = octaveOffset === 4;
+  for (let i = 0; i < 13; i++) {
+    const button = noteButtons.get(60 + i);
+    const name = i === 0 ? `C${low}` : i === 12 ? `C${low + 1}` : noteNames[i];
+    button.textContent = name;
+    button.setAttribute('aria-label', `${name}, MIDI note ${60 + i + octaveOffset * 12}, ${keyCodes[i].slice(3)}`);
+  }
+}
+document.querySelector('#octave-down').addEventListener('click', () => shiftOctave(-1));
+document.querySelector('#octave-up').addEventListener('click', () => shiftOctave(1));
+window.addEventListener('keydown', event => {
+  if (['KeyZ', 'KeyX'].includes(event.code) && !event.ctrlKey && !event.metaKey && !event.altKey && !event.target.matches('input, textarea, select, [contenteditable]')) {
+    event.preventDefault();
+    if (!event.repeat) shiftOctave(event.code === 'KeyZ' ? -1 : 1);
+    return;
+  }
+  const index = keyCodes.indexOf(event.code);
+  if (index < 0 || event.ctrlKey || event.metaKey || event.altKey || event.target.matches('input, textarea, select, [contenteditable]')) return;
+  event.preventDefault(); if (!event.repeat) noteDown(60 + index, event.code);
+});
+window.addEventListener('keyup', event => noteUp(event.code));
+
 showProgram(0);
 connection(false);
 poll();

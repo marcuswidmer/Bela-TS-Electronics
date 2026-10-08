@@ -1,8 +1,9 @@
 #pragma once
 #include <array>
 
-// Future host I/O boundary. Ports are intentionally disconnected: no audio
-// device, file, browser microphone, CV mapping or hardware backend is opened.
+// Host I/O boundary. The simulator exports audioOut for browser playback;
+// audioIn stays silent and CV ports remain disconnected. audioConnected
+// indicates that the host supports output transport, not microphone capture.
 struct PepperIO {
     static constexpr unsigned int audioChannels = 2, cvChannels = 8;
     std::array<float, audioChannels> audioIn{}, audioOut{};

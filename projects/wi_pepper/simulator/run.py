@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from urllib.parse import urlsplit, parse_qs
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = Path(__file__).resolve().parent
@@ -32,10 +33,15 @@ class Engine:
         self.lib.pepper_create.restype = ctypes.c_void_p
         self.lib.pepper_destroy.argtypes = [ctypes.c_void_p]
         self.lib.pepper_advance.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        self.lib.pepper_render.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
+        self.lib.pepper_note.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint]
+        self.lib.pepper_panic.argtypes = [ctypes.c_void_p]
+        self.audio_buffer = bytearray()
+        self.audio_frames = 0
         self.lib.pepper_pot.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_float]
         self.lib.pepper_button.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int]
         self.lib.pepper_state.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
-        for name in ("destroy", "advance", "pot", "button", "state"):
+        for name in ("destroy", "advance", "render", "note", "panic", "pot", "button", "state"):
             getattr(self.lib, "pepper_" + name).restype = None
         self.handle = self.lib.pepper_create()
         self.lock = threading.Lock()
@@ -57,7 +63,19 @@ class Engine:
                 if now - self.last_client > 1.0:
                     for i in range(4):
                         self.lib.pepper_button(self.handle, i, 0)
-                self.lib.pepper_advance(self.handle, count)
+                    self.lib.pepper_panic(self.handle)
+                output = (ctypes.c_float * (count * 2))()
+                self.lib.pepper_render(self.handle, count, output)
+                self.audio_buffer.extend(bytes(output))
+                self.audio_frames += count
+                del self.audio_buffer[:-8192 * 8]
+
+    def audio(self, cursor):
+        with self.lock:
+            end = self.audio_frames
+            start = max(end - len(self.audio_buffer) // 8, min(cursor, end))
+            offset = (start - (end - len(self.audio_buffer) // 8)) * 8
+            return end, bytes(self.audio_buffer[offset:])
 
     def state(self):
         values = (ctypes.c_float * 24)()
@@ -68,17 +86,26 @@ class Engine:
                 "buttons": [bool(x) for x in values[9:13]],
                 "leds": [bool(x) for x in values[13:23]],
                 "indicating": bool(values[23]),
-                "io": {"audio": False, "cv": False}}
+                "io": {"audio": True, "cv": False}}
 
     def command(self, message):
         if not isinstance(message, dict):
             raise ValueError("Expected an object")
         kind, index = message.get("type"), message.get("index")
+        if kind == "panic":
+            with self.lock:
+                self.lib.pepper_panic(self.handle)
+            return
         if type(index) is not int:
             raise ValueError("Expected an integer index")
         with self.lock:
             self.last_client = time.monotonic()
-            if kind == "pot" and 0 <= index < 8:
+            if kind == "note" and 0 <= index <= 127:
+                velocity = message.get("velocity")
+                if type(velocity) is not int or not 0 <= velocity <= 127:
+                    raise ValueError("Velocity must be an integer between 0 and 127")
+                self.lib.pepper_note(self.handle, index, velocity)
+            elif kind == "pot" and 0 <= index < 8:
                 value = message.get("value")
                 if type(value) not in (float, int) or not math.isfinite(value) or not 0 <= value <= 1:
                     raise ValueError("Pot value must be between 0 and 1")
@@ -100,6 +127,12 @@ class Handler(SimpleHTTPRequestHandler):
         self.engine = engine
         super().__init__(*args, directory=str(ROOT / "web"), **kwargs)
 
+    def end_headers(self):
+        # The panel and native API evolve together. Never reuse an old script
+        # after restarting the simulator with a newer backend.
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def log_message(self, *_):
         pass
 
@@ -108,12 +141,24 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(payload)
 
     def do_GET(self):
-        if self.path == "/api/state":
+        if urlsplit(self.path).path == "/api/audio":
+            try:
+                cursor = int(parse_qs(urlsplit(self.path).query).get("cursor", ["0"])[0])
+            except ValueError:
+                self.reply(400, {"error": "Invalid audio cursor"})
+                return
+            end, payload = self.engine.audio(cursor)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("X-Audio-Cursor", str(end))
+            self.end_headers()
+            self.wfile.write(payload)
+        elif self.path == "/api/state":
             self.reply(200, self.engine.state())
         else:
             super().do_GET()

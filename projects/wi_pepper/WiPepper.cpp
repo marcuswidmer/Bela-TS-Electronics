@@ -13,6 +13,9 @@ bool WiPepper::setup(float sampleRate, float controlSampleRate,
     midiOutput_ = std::move(midiOutput);
     program_ = PgmSequencer;
     speedSmoothed_ = 0;
+    directMidiMode_ = false;
+    directPitch_ = 0;
+    directTriggerCountdown_ = 0;
     stepCountdown_ = priorityCountdown_ = syncCountdown_ = 0;
     sequencerButton_ = false;
     sequencerLed_ = false;
@@ -40,6 +43,9 @@ void WiPepper::pressButton(unsigned int button)
         if(program_ == PgmSequencer && midiOutput_) midiOutput_(0xFC);
         juno.panic(); // Do not carry held notes, pedals or chorus tails across programs.
         program_ = static_cast<Program>((program_ + 1) % ProgramCount);
+        directMidiMode_ = false;
+        directPitch_ = 0;
+        directTriggerCountdown_ = 0;
         cvOutputs_ = {};
         stepCountdown_ = priorityCountdown_ = syncCountdown_ = 0;
         sequencerButton_ = false;
@@ -47,7 +53,16 @@ void WiPepper::pressButton(unsigned int button)
         sequencer.setButton(false);
         sequencer.midiClock_ = false;
     } else if(program_ == PgmSequencer) {
-        if(button == 1) sequencerButton_ = true;
+        if(button == 1) {
+            directMidiMode_ = !directMidiMode_;
+            directPitch_ = 0;
+            directTriggerCountdown_ = 0;
+            cvOutputs_ = {};
+            stepCountdown_ = priorityCountdown_ = syncCountdown_ = 0;
+            sequencerButton_ = sequencerLed_ = false;
+            sequencer.setButton(false);
+            if(directMidiMode_ && midiOutput_) midiOutput_(0xFC);
+        } else if(button == 2 && !directMidiMode_) sequencerButton_ = true;
     } else if(program_ == PgmJuno) {
         juno.pressButton(button);
     } else {
@@ -59,8 +74,12 @@ void WiPepper::midiNoteOn(unsigned int note, unsigned int velocity, unsigned int
 {
     if(note > 127 || velocity > 127 || channel > 15) return;
     if(!velocity) { midiNoteOff(note, channel); return; }
-    if(program_ == PgmSequencer)
-        sequencer.assignNote(static_cast<int>(note) - 39);
+    if(program_ == PgmSequencer) {
+        if(directMidiMode_) {
+            directPitch_ = std::max(0.0f, std::min(1.0f, (static_cast<float>(note) - 39) / 60));
+            directTriggerCountdown_ = std::max(1, static_cast<int>(std::lround(controlSampleRate_ * .01f)));
+        } else sequencer.assignNote(static_cast<int>(note) - 39);
+    }
     else if(program_ == PgmJuno)
         juno.noteOn(note, velocity, channel);
 }
@@ -83,6 +102,14 @@ void WiPepper::midiPitchBend(unsigned int value, unsigned int channel)
 void WiPepper::processControls()
 {
     if(program_ != PgmSequencer) return;
+    if(directMidiMode_) {
+        cvOutputs_[0] = directPitch_;
+        cvOutputs_[1] = directTriggerCountdown_ > 0;
+        cvOutputs_[2] = cvOutputs_[3] = 0;
+        sequencerLed_ = false;
+        if(directTriggerCountdown_ > 0) --directTriggerCountdown_;
+        return;
+    }
     // Match PgmSequencer's analog-rate smoothing and control mapping.
     speedSmoothed_ += 0.0001f * (pots_[0] - speedSmoothed_);
     sequencer.setPeriod(1.0f / (0.4f + 14.0f * speedSmoothed_));

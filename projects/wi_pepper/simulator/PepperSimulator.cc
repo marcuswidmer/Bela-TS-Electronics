@@ -20,6 +20,7 @@ struct Simulator {
     std::array<float, 10> thresholds{};
     unsigned int frame = 0, ledMask = 0, visibleLeds = 0;
     Simulator() {
+        io.audioConnected = true;
         pepper.setup(sampleRate, sampleRate / 2);
         pepper.setPots(pots);
         indicator.setup(sampleRate);
@@ -27,7 +28,7 @@ struct Simulator {
         for(unsigned int i = 0; i < thresholds.size(); ++i)
             thresholds[i] = std::pow(10.0f, (-48.0f + 5.0f * i) / 20.0f);
     }
-    void advance(unsigned int frames) {
+    void advance(unsigned int frames, float* output = nullptr) {
         for(unsigned int n = 0; n < frames; ++n, ++frame) {
             for(unsigned int i = 0; i < buttons.size(); ++i) {
                 auto& b = buttons[i];
@@ -42,9 +43,9 @@ struct Simulator {
                 }
             }
             if(frame % 2 == 0) pepper.processControls();
-            // DSP executes with silence. Audio/CV transport is intentionally
-            // absent; PepperIO is the insertion point for a future backend.
+            // Browser playback consumes the same stereo frames as the device.
             pepper.process(io.audioIn.data(), io.audioOut.data());
+            if(output) { output[2*n] = io.audioOut[0]; output[2*n+1] = io.audioOut[1]; }
             const float peak = std::max(std::abs(io.audioIn[0]), std::abs(io.audioIn[1]));
             ledMask = 0;
             for(unsigned int led = 0; led < 10; ++led) {
@@ -52,8 +53,10 @@ struct Simulator {
                     peak >= thresholds[led];
                 if(pepper.program() == WiPepper::PgmSequencer && led == 9)
                     on = pepper.sequencerLed();
+                if(pepper.program() == WiPepper::PgmSequencer && led == 3)
+                    on = pepper.directMidiMode();
                 if(pepper.program() == WiPepper::PgmJuno) on = led < pepper.synthVoices();
-                if(indicator.active()) on = indicator.ledOn(led);
+                if(led < WiPepper::ProgramCount && indicator.active()) on = indicator.ledOn(led);
                 if(on) ledMask |= 1u << led;
             }
             // Preserve short 10 ms pulses between browser polls.
@@ -69,6 +72,18 @@ void* pepper_create() { return new Simulator; }
 void pepper_destroy(void* handle) { delete static_cast<Simulator*>(handle); }
 void pepper_advance(void* handle, unsigned int frames) {
     static_cast<Simulator*>(handle)->advance(frames);
+}
+void pepper_render(void* handle, unsigned int frames, float* output) {
+    static_cast<Simulator*>(handle)->advance(frames, output);
+}
+void pepper_note(void* handle, unsigned int note, unsigned int velocity) {
+    auto& pepper = static_cast<Simulator*>(handle)->pepper;
+    if(velocity) pepper.midiNoteOn(note, velocity);
+    else pepper.midiNoteOff(note);
+}
+void pepper_panic(void* handle) {
+    auto& pepper = static_cast<Simulator*>(handle)->pepper;
+    pepper.midiControlChange(120, 0);
 }
 void pepper_pot(void* handle, unsigned int index, float value) {
     if(index >= 8 || !std::isfinite(value)) return;
