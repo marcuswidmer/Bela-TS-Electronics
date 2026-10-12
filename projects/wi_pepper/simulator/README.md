@@ -27,7 +27,9 @@ continuously until the next selection. LEDs 0–2 are reserved for program
 indication; LEDs 3–9 retain the meter, countdown, and voice-count displays.
 A disconnected browser leaves no button held after one second.
 In sequencer mode, Button 2 toggles sequence freeze and LED 4 shows the lock.
-Button 1 toggles direct MIDI mode (LED 3); Button 3 requests MIDI resync.
+Button 1 toggles direct MIDI mode (LED 3); Button 3 toggles live note overlay
+over the running sequence (LED 5).
+Pot 3 controls sequencer MIDI note length from 10 ms to one full step.
 
 ## Audio playback and MIDI keyboard
 

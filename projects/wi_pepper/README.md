@@ -23,20 +23,35 @@ See [simulator/README.md](simulator/README.md) for controls and setup.
 
 Pots 0–2 control speed, default sequence fraction / assigned-sequence substeps,
 and random sequence, respectively.
+Pot 3 controls MIDI output note length: 10 ms at minimum, one full step at
+maximum, with a linear range between them. Duration is set at each Note On
+using the current speed; pot changes affect subsequent notes. The next
+step/substep retriggers the note if it arrives before the duration ends.
 The second button (index 1) toggles direct MIDI-to-CV mode; LED 3 stays lit
 while it is enabled. Each positive-velocity MIDI Note On sets CV0 to
 `clamp((note - 39) / 60, 0, 1)` and triggers CV1 for 10 ms. The latest note
 wins, and pitch remains after key release. Note Off and velocity-zero Note On
-do not trigger. CV2–3 stay zero. Sequencing and outgoing MIDI Clock pause in
+do not trigger. Incoming Note On and Note Off messages are also duplicated to
+the computer, preserving pitch, velocity (including release velocity), and
+channel; velocity-zero Note On is forwarded unchanged. CV2–3 stay zero.
+Sequencing and outgoing MIDI Clock pause in
 this mode; entering sends MIDI Stop. Toggling back resumes the saved sequence.
 Program changes reset direct mode to off. Pots have no effect in direct mode.
 The third button (index 2) toggles sequence freeze; LED 4 stays lit while locked.
 Playback, gates and MIDI Clock continue, but MIDI note assignment and pattern,
-variation and substep changes are blocked. Speed remains adjustable. The lock
+variation changes are blocked. Speed, assigned-sequence substep division and
+probability, and MIDI note length remain adjustable. The lock
 applies immediately and survives direct mode and program changes; setup starts
 unlocked. Press again to unlock. Direct MIDI-to-CV notes still work while locked.
-The fourth button (index 3) requests MIDI resync in sequencer mode (Stop, Start,
-Clock at the next internal step). Audio outputs are silent.
+The fourth button (index 3) toggles live MIDI note overlay in non-direct mode;
+LED 5 stays lit while enabled. Incoming notes play over the running sequence
+instead of assigning new steps, preserving their channel and velocity. Their
+length follows incoming releases; pot 3 controls only sequence notes. The
+sequence, CV outputs and MIDI Clock continue, including while locked. Shared
+channel/pitch notes stay on until both the live input and sequence release them.
+Turning overlay off releases its held notes. Direct mode temporarily suspends
+overlay; program changes and setup reset it to off. This replaces Button 3's
+MIDI resync action. Audio outputs are silent.
 
 Analog output 0 carries pitch (note / 60, clamped to 0–1), output 1 carries
 10 ms step/substep gates, and output 2 retains the source's sync output
@@ -44,25 +59,42 @@ Analog output 0 carries pitch (note / 60, clamped to 0–1), output 1 carries
 outputs are zero. Sequencing runs at the actual analog sample rate, with
 an audio-rate fallback if analog I/O is disabled.
 
-MIDI uses `hw:1,0,0`, as in `WiModular.cpp`. Positive-velocity Note On messages
+MIDI input uses `hw:1,0,0`, a keyboard/interface attached to the USB-A host port.
+Output uses `hw:0,0,0`, Bela's USB device connection to the computer (the USB
+cable used for the IDE). Select Bela as a MIDI input device in your DAW to
+receive its notes. Output is not sent to the USB-A host port. This mapping follows
+[Bela's MIDI example](https://docs.bela.io/Communication_2MIDI_2render_8cpp-example.html);
+`amidi -l` on Bela shows the actual device addresses.
+With overlay and direct mode off, positive-velocity Note On messages
 assign notes with an offset of 39. Note 0 ticks the sequencer externally;
 regular incoming MIDI Clock is not used, matching the source. Output Clock
-is six pulses per internal step. Leaving the sequencer sends Stop, clears CV
+is six pulses per internal step. With direct mode off, each step/substep gate
+sends a Note On on MIDI channel 1 at velocity 100, using the sequence pitch
+plus 39 (clamped to 0–127), followed by Note Off after the duration set by pot 3.
+CV gates remain 10 ms. Repeated pitches
+retrigger; locked sequences keep sending notes. Mode/program changes, repeated
+setup, and shutdown release held output notes.
+Leaving the sequencer sends Stop, clears CV
 outputs, and pauses sequence processing. Returning preserves assigned notes
-and restores internal timing; Button 3 resyncs connected equipment.
+and restores internal timing.
 Missing MIDI hardware does not prevent the programs from running.
 
 The local sequencer copy removes Bela logging, reserves space for up to 128
 assigned steps during setup, and resets the step index when replacing a sequence.
+Note assignment preserves the running step countdown and MIDI Clock phase;
+new MIDI output notes start on the existing step/substep schedule.
+Each replacement begins with the first assigned note on its next step, then
+plays notes in the order received, including repeated pitches. Internal steps
+and external ticks use the same ordering.
 MIDI input is consumed on the render thread to avoid concurrent sequence edits.
 
 ## JUNO-inspired synthesizer (program 2)
 
-Connect a class-compliant USB MIDI keyboard to Bela's USB host port (or use a
-USB MIDI interface for a DIN keyboard), and listen to Pepper's stereo audio
+Connect a class-compliant USB MIDI keyboard to Bela's USB-A host port (or use
+a USB MIDI interface for a DIN keyboard), and listen to Pepper's stereo audio
 outputs. Press Button 0 twice from startup to select program 2. MIDI input
-uses `hw:1,0,0`, configured by `kMidiPort` in `render.cpp`; change that constant
-if your keyboard/interface enumerates at another ALSA address (`amidi -l`).
+uses `hw:1,0,0`, configured by `kMidiInputPort` in `render.cpp`; change that
+constant if your interface enumerates at another ALSA address (`amidi -l`).
 Synth operation requires MIDI input only; unavailable MIDI output is harmless.
 
 The synth receives all 16 MIDI channels, tracks note ownership per channel,
@@ -182,6 +214,8 @@ g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/resonator_test.
 /tmp/wi-pepper-resonator-test
 g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/programs_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-programs-test
 /tmp/wi-pepper-programs-test
+g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/midi_output_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-midi-output-test
+/tmp/wi-pepper-midi-output-test
 g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/juno_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-juno-test
 /tmp/wi-pepper-juno-test
 ```
@@ -189,8 +223,15 @@ g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/juno_test.cc pr
 Tests cover initialization, silence, pluck energy, stereo spread, extreme
 controls, changing note sets, sustain, clearing, and dry routing at four
 sample rates. `.cc` keeps the test out of Bela's recursive `.cpp` build.
-Program tests cover the default selection, switching, MIDI assignment and resync,
+Program tests cover the default selection, switching, MIDI assignment and overlay,
 CV clearing, audio routing, and continuous program indication at multiple sample rates.
+MIDI output tests cover direct-mode forwarding, channel and velocity preservation,
+sequence pitches, adjustable note lengths, retriggers, locked patterns and note cleanup
+at multiple control sample rates.
+They also compare CV gates and outgoing MIDI Clock against an unedited sequence
+while notes are assigned between steps and at step boundaries.
+Assignment-order tests cover internal steps, external ticks, repeated pitches,
+and appending notes while a sequence is playing.
 Synth tests cover pitch/bend, polyphony and sustain, clearing, release, chorus, extreme
 controls, program routing, and allocation-free processing at four sample rates.
 The keyboard test covers immediate note onset, channel-specific release,

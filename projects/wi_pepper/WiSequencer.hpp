@@ -58,6 +58,7 @@ private:
     bool button_ = false;
     bool prevButton_ = false;
     bool assignedSequence_ = false;
+    bool firstAssignedStepPending_ = false;
     bool randomSequence_ = false;
     float midiClockPhase_ = 0.0f;
     float midiClockSamplesPerTick_ = 1.0f;

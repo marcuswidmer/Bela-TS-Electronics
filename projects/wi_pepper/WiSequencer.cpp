@@ -16,6 +16,7 @@ void WiSequencer::init(float fs, std::function<void(float)> ledCb, std::function
     fs_ = fs;
     assignMode_ = true;
     assignedSequence_ = randomSequence_ = false;
+    firstAssignedStepPending_ = false;
     button_ = prevButton_ = false;
     resyncRequested_ = false;
     tickRequested_ = false;
@@ -139,9 +140,9 @@ void WiSequencer::tick()
 
 void WiSequencer::setSubstepBehaviour(float val)
 {
-    if (freezeSequence_ || not assignedSequence_) return;
+    if (not assignedSequence_) return;
 
-    if (val > 0 and val <= 0.25) {
+    if (val >= 0 and val <= 0.25) {
         stepDivider_ = 1;
         substepLikelihood_ = 0;
     } else if (val > 0.25 and val <= 0.5) {
@@ -175,7 +176,9 @@ int WiSequencer::getNextStep()
     //     incrementValue = randomIncr(gen_);
     // }
 
-    int candidateStep = (currentStep_ + incrementValue) % numNotes_;
+    // A replacement starts with the first received note on the existing step grid.
+    int candidateStep = firstAssignedStepPending_ ? 0 : (currentStep_ + incrementValue) % numNotes_;
+    firstAssignedStepPending_ = false;
     while (not notes_[candidateStep].active) {
         candidateStep = (candidateStep + 1) % numNotes_;
     }
@@ -247,7 +250,8 @@ void WiSequencer::startAssignCountdown()
     notes_.clear();
     numNotes_ = 0;
     currentStep_ = 0;
-    stepCountdown_ = 1;
+    firstAssignedStepPending_ = true;
+    // Keep the running step countdown when replacing notes; assignment is not a tick.
 }
 
 void WiSequencer::freezeSequenceChanged(bool freezeSequence)
@@ -279,12 +283,6 @@ void WiSequencer::assignNote(int note)
         if(notes_.size() >= 128) return;
         notes_.push_back({note, true});
         numNotes_ = notes_.size();
-
-        // // keep step index valid if notes were empty before
-        // if (numNotes_ == 1) {
-        //     currentStep_ = 0;
-        //     stepCountdown_ = 1;
-        // }
 
         // Step 0: Erase all notes when entering assign mode
         // Step 1: Erase all notes. Assign and play first note and start 6 second timer

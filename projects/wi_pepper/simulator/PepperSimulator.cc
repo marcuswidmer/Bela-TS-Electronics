@@ -57,6 +57,8 @@ struct Simulator {
                     on = pepper.directMidiMode();
                 if(pepper.program() == WiPepper::PgmSequencer && led == 4)
                     on = pepper.sequenceLocked();
+                if(pepper.program() == WiPepper::PgmSequencer && led == 5)
+                    on = pepper.noteOverlay();
                 if(pepper.program() == WiPepper::PgmJuno) on = led < pepper.synthVoices();
                 if(led < WiPepper::ProgramCount && indicator.active()) on = indicator.ledOn(led);
                 if(on) ledMask |= 1u << led;

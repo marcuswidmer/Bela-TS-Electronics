@@ -12,7 +12,8 @@ namespace {
 WiPepper wiPepper;
 ProgramIndicator programIndicator;
 Midi midi;
-constexpr const char* kMidiPort = "hw:1,0,0";
+constexpr const char* kMidiInputPort = "hw:1,0,0"; // USB-A host keyboard/interface.
+constexpr const char* kMidiOutputPort = "hw:0,0,0"; // USB device connection to the computer.
 bool midiInputReady = false, midiOutputReady = false;
 
 void sendMidiByte(uint8_t byte)
@@ -32,7 +33,7 @@ void readMidi()
         if(message.getType() == kmmNoteOn)
             wiPepper.midiNoteOn(message.getDataByte(0), message.getDataByte(1), message.getChannel());
         else if(message.getType() == kmmNoteOff)
-            wiPepper.midiNoteOff(message.getDataByte(0), message.getChannel());
+            wiPepper.midiNoteOff(message.getDataByte(0), message.getChannel(), message.getDataByte(1));
         else if(message.getType() == kmmControlChange)
             wiPepper.midiControlChange(message.getDataByte(0), message.getDataByte(1), message.getChannel());
         else if(message.getType() == kmmPitchBend)
@@ -107,11 +108,12 @@ bool setup(BelaContext* context, void* userData)
     if(!wiPepper.setup(context->audioSampleRate, controlSampleRate, sendMidiByte) || context->audioInChannels < 2 || context->audioOutChannels < 2)
         return false;
     midi.enableParser(true);
-    midiInputReady = midi.readFrom(kMidiPort) > 0;
-    midiOutputReady = midi.writeTo(kMidiPort) > 0;
+    midiInputReady = midi.readFrom(kMidiInputPort) > 0;
+    midiOutputReady = midi.writeTo(kMidiOutputPort) > 0;
     if(!midiInputReady || !midiOutputReady)
-        std::printf("MIDI %s: input %s, output %s\n", kMidiPort,
-                    midiInputReady ? "ready" : "unavailable", midiOutputReady ? "ready" : "unavailable");
+        std::printf("MIDI input %s: %s, output %s: %s\n", kMidiInputPort,
+                    midiInputReady ? "ready" : "unavailable", kMidiOutputPort,
+                    midiOutputReady ? "ready" : "unavailable");
     programIndicator.setup(context->digitalSampleRate);
     programIndicator.select(wiPepper.program());
     controlInterval = std::max(1u, static_cast<unsigned int>(context->audioSampleRate/1000));
@@ -185,6 +187,8 @@ void render(BelaContext* context, void* userData)
                     on = wiPepper.directMidiMode();
                 if(wiPepper.program() == WiPepper::PgmSequencer && led == 4)
                     on = wiPepper.sequenceLocked();
+                if(wiPepper.program() == WiPepper::PgmSequencer && led == 5)
+                    on = wiPepper.noteOverlay();
                 if(wiPepper.program() == WiPepper::PgmJuno)
                     on = led < wiPepper.synthVoices();
                 if(led < WiPepper::ProgramCount && programIndicator.active())
@@ -198,5 +202,6 @@ void render(BelaContext* context, void* userData)
 
 void cleanup(BelaContext* context, void* userData)
 {
+    wiPepper.stopMidiNotes();
     if(wiPepper.program() == WiPepper::PgmSequencer) sendMidiByte(0xFC);
 }

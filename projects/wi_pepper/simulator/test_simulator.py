@@ -61,7 +61,7 @@ class SimulatorTest(unittest.TestCase):
         self.advance(221)
         self.assertEqual(self.engine.state()["program"], 0)
 
-    def test_controls_and_countdown(self):
+    def test_controls_and_overlay(self):
         self.engine.command({"type": "pot", "index": 0, "value": .75})
         self.assertAlmostEqual(self.engine.state()["pots"][0], .75)
         self.advance(60000)  # The program indication remains lit.
@@ -70,7 +70,7 @@ class SimulatorTest(unittest.TestCase):
         self.advance(441)
         state = self.engine.state()
         self.assertEqual(state["leds"][:3], [True, False, False])
-        self.assertTrue(state["leds"][9])
+        self.assertTrue(state["leds"][5])
         self.assertEqual(state["io"], {"audio": True, "cv": False})
 
     def test_direct_mode_led(self):

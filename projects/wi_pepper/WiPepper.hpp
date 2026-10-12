@@ -16,7 +16,8 @@ public:
     void setPots(const std::array<float, 8>& pots);
     void pressButton(unsigned int button);
     void midiNoteOn(unsigned int note, unsigned int velocity, unsigned int channel = 0);
-    void midiNoteOff(unsigned int note, unsigned int channel = 0);
+    void midiNoteOff(unsigned int note, unsigned int channel = 0, unsigned int velocity = 0);
+    void stopMidiNotes(); // Release output notes on shutdown or mode changes.
     void midiControlChange(unsigned int controller, unsigned int value, unsigned int channel = 0);
     void midiPitchBend(unsigned int value, unsigned int channel = 0);
     unsigned int synthVoices() const { return program_ == PgmJuno ? juno.activeVoices() : 0; }
@@ -25,10 +26,15 @@ public:
     bool sequencerLed() const { return program_ == PgmSequencer && sequencerLed_; }
     bool directMidiMode() const { return program_ == PgmSequencer && directMidiMode_; }
     bool sequenceLocked() const { return program_ == PgmSequencer && sequencer.sequenceFrozen(); }
+    bool noteOverlay() const { return program_ == PgmSequencer && !directMidiMode_ && noteOverlay_; }
     Program program() const { return program_; }
     const std::array<float, 4>& cvOutputs() const { return cvOutputs_; }
 
 private:
+    void sendMidiNote(uint8_t status, unsigned int note, unsigned int velocity, unsigned int channel);
+    void sendLiveMidiNote(uint8_t status, unsigned int note, unsigned int velocity, unsigned int channel);
+    void stopLiveMidiNotes();
+    void stopSequenceMidiNote();
     Program program_ = PgmSequencer;
     KarplusResonator resonator;
     JunoSynth juno;
@@ -36,9 +42,13 @@ private:
     std::array<float, 8> pots_{{0, 0.5f, 0.5f, 0.5f, 0.5f, 1, 0, 0}};
     std::array<float, 4> cvOutputs_{};
     std::function<void(uint8_t)> midiOutput_;
+    std::array<std::array<bool, 128>, 16> liveMidiNotes_{};
+    int sequenceMidiNote_ = -1, sequenceMidiCountdown_ = 0;
+    bool sequenceTriggered_ = false;
     float controlSampleRate_ = 0, speedSmoothed_ = 0;
     int stepCountdown_ = 0, priorityCountdown_ = 0, syncCountdown_ = 0;
     bool directMidiMode_ = false;
+    bool noteOverlay_ = false;
     float directPitch_ = 0;
     int directTriggerCountdown_ = 0;
     bool sequencerButton_ = false;

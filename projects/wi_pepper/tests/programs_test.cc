@@ -27,11 +27,14 @@ int main()
     for(auto byte : midi) sawClock |= byte == 0xF8;
     assert(sawGate && sawClock);
     pepper.pressButton(3);
-    for(int i = 0; i < 3000; ++i) pepper.processControls();
-    bool sawResync = false;
-    for(unsigned int i = 0; i + 2 < midi.size(); ++i)
-        sawResync |= midi[i] == 0xFC && midi[i+1] == 0xFA && midi[i+2] == 0xF8;
-    assert(sawResync);
+    assert(pepper.noteOverlay());
+    const auto beforeOverlay = midi.size();
+    pepper.midiNoteOn(76, 80, 2);
+    pepper.midiNoteOff(76, 2, 30);
+    const std::vector<uint8_t> overlayBytes(midi.begin() + beforeOverlay, midi.end());
+    assert(overlayBytes == (std::vector<uint8_t>{0x92, 76, 80, 0x82, 76, 30}));
+    pepper.pressButton(3);
+    assert(!pepper.noteOverlay());
 
     // Replace a longer sequence with a single note without a stale step index.
     pepper.midiNoteOn(60, 100);
@@ -73,7 +76,7 @@ int main()
     assert(pepper.program() == WiPepper::PgmSequencer);
     assert(!pepper.setup(0));
 
-    // At 1 kHz, a step lights the LED for 10 ticks; resync priority lasts 1 s.
+    // At 1 kHz, a step lights the LED for 10 ticks; overlay does not alter timing.
     assert(pepper.setup(44100, 1000));
     pots[0] = pots[2] = 0;
     pepper.setPots(pots);
@@ -84,16 +87,18 @@ int main()
     pepper.processControls();
     assert(!pepper.sequencerLed());
     pepper.pressButton(3);
+    assert(pepper.noteOverlay());
     for(int i = 0; i < 1000; ++i) {
         pepper.processControls();
-        assert(pepper.sequencerLed());
+        assert(!pepper.sequencerLed());
         assert(pepper.cvOutputs()[1] == 0);
     }
     pepper.processControls();
     assert(!pepper.sequencerLed());
     pepper.pressButton(3);
+    assert(!pepper.noteOverlay());
     pepper.processControls();
-    assert(pepper.sequencerLed());
+    assert(!pepper.sequencerLed());
     pepper.pressButton(0);
     assert(!pepper.sequencerLed());
     pepper.pressButton(0);
@@ -129,7 +134,7 @@ int main()
     pepper.processControls();
     assert(pepper.cvOutputs()[0] == 0);
     assert(pepper.cvOutputs()[1] == 1);
-    assert(midi.size() == clocksBefore);
+    assert(midi.size() == clocksBefore + 15); // Five forwarded note messages, no clock.
     pepper.pressButton(1);
     assert(!pepper.directMidiMode());
     pepper.processControls();
@@ -166,8 +171,8 @@ int main()
     for(int i = 0; i < 1200; ++i) pepper.processControls();
     bool clockWhileLocked = false;
     for(auto i = midiBeforeLock; i < midi.size(); ++i) {
-        assert(midi[i] == 0xF8); // Freeze must not send Stop/Start.
-        clockWhileLocked = true;
+        assert(midi[i] != 0xFC && midi[i] != 0xFA); // Notes and clock continue without Stop/Start.
+        clockWhileLocked |= midi[i] == 0xF8;
     }
     assert(clockWhileLocked);
     pepper.pressButton(2);
