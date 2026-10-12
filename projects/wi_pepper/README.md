@@ -21,8 +21,8 @@ See [simulator/README.md](simulator/README.md) for controls and setup.
 
 ## Sequencer (program 0)
 
-Pots 0–2 match `WiModular`'s `PgmSequencer` mapping: speed, default sequence
-fraction / assigned-sequence substeps, and random sequence / assignment freeze.
+Pots 0–2 control speed, default sequence fraction / assigned-sequence substeps,
+and random sequence, respectively.
 The second button (index 1) toggles direct MIDI-to-CV mode; LED 3 stays lit
 while it is enabled. Each positive-velocity MIDI Note On sets CV0 to
 `clamp((note - 39) / 60, 0, 1)` and triggers CV1 for 10 ms. The latest note
@@ -30,8 +30,13 @@ wins, and pitch remains after key release. Note Off and velocity-zero Note On
 do not trigger. CV2–3 stay zero. Sequencing and outgoing MIDI Clock pause in
 this mode; entering sends MIDI Stop. Toggling back resumes the saved sequence.
 Program changes reset direct mode to off. Pots have no effect in direct mode.
-The third button (index 2) requests MIDI resync in sequencer mode (Stop, Start,
-Clock at the next internal step). Button 3 is unused. Audio outputs are silent.
+The third button (index 2) toggles sequence freeze; LED 4 stays lit while locked.
+Playback, gates and MIDI Clock continue, but MIDI note assignment and pattern,
+variation and substep changes are blocked. Speed remains adjustable. The lock
+applies immediately and survives direct mode and program changes; setup starts
+unlocked. Press again to unlock. Direct MIDI-to-CV notes still work while locked.
+The fourth button (index 3) requests MIDI resync in sequencer mode (Stop, Start,
+Clock at the next internal step). Audio outputs are silent.
 
 Analog output 0 carries pitch (note / 60, clamped to 0–1), output 1 carries
 10 ms step/substep gates, and output 2 retains the source's sync output
@@ -44,7 +49,7 @@ assign notes with an offset of 39. Note 0 ticks the sequencer externally;
 regular incoming MIDI Clock is not used, matching the source. Output Clock
 is six pulses per internal step. Leaving the sequencer sends Stop, clears CV
 outputs, and pauses sequence processing. Returning preserves assigned notes
-and restores internal timing; Button 2 resyncs connected equipment.
+and restores internal timing; Button 3 resyncs connected equipment.
 Missing MIDI hardware does not prevent the programs from running.
 
 The local sequencer copy removes Bela logging, reserves space for up to 128

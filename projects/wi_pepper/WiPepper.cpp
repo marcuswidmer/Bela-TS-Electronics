@@ -62,7 +62,9 @@ void WiPepper::pressButton(unsigned int button)
             sequencerButton_ = sequencerLed_ = false;
             sequencer.setButton(false);
             if(directMidiMode_ && midiOutput_) midiOutput_(0xFC);
-        } else if(button == 2 && !directMidiMode_) sequencerButton_ = true;
+        } else if(button == 2) {
+            sequencer.freezeSequenceChanged(!sequencer.sequenceFrozen());
+        } else if(button == 3 && !directMidiMode_) sequencerButton_ = true;
     } else if(program_ == PgmJuno) {
         juno.pressButton(button);
     } else {
@@ -116,7 +118,6 @@ void WiPepper::processControls()
     sequencer.setButton(sequencerButton_);
     sequencerButton_ = false;
     sequencer.setRandomSequence(pots_[2] > 0.5f);
-    sequencer.freezeSequenceChanged(pots_[2] > 0.5f);
     sequencer.includeFractionOfDefaultSequence(pots_[1]);
     sequencer.setSubstepBehaviour(pots_[1]);
     sequencer.process();

@@ -139,7 +139,7 @@ void WiSequencer::tick()
 
 void WiSequencer::setSubstepBehaviour(float val)
 {
-    if (not assignedSequence_) return;
+    if (freezeSequence_ || not assignedSequence_) return;
 
     if (val > 0 and val <= 0.25) {
         stepDivider_ = 1;
@@ -158,6 +158,7 @@ void WiSequencer::setSubstepBehaviour(float val)
 
 void WiSequencer::setRandomSequence(bool rand)
 {
+    if (freezeSequence_) return;
     if (randomSequence_ != rand) {
         std::uniform_int_distribution<> randomNote(0, numGroups_ - 1);
         for (int i = 0; i < numGroups_; ++i)
@@ -184,7 +185,7 @@ int WiSequencer::getNextStep()
 
 void WiSequencer::includeFractionOfDefaultSequence(float frac)
 {
-    if (assignedSequence_) return;
+    if (freezeSequence_ || assignedSequence_) return;
 
     int numGroups = 4;
     numNotes_ = 6;
@@ -308,4 +309,3 @@ void WiSequencer::produceSubsteps()
             ledCb_(0.01);
     }
 }
-

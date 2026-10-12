@@ -183,6 +183,8 @@ void render(BelaContext* context, void* userData)
                     on = wiPepper.sequencerLed();
                 if(wiPepper.program() == WiPepper::PgmSequencer && led == 3)
                     on = wiPepper.directMidiMode();
+                if(wiPepper.program() == WiPepper::PgmSequencer && led == 4)
+                    on = wiPepper.sequenceLocked();
                 if(wiPepper.program() == WiPepper::PgmJuno)
                     on = led < wiPepper.synthVoices();
                 if(led < WiPepper::ProgramCount && programIndicator.active())

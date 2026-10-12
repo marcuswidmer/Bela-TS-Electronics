@@ -3,8 +3,8 @@
 const programs = [
   { name: 'Sequencer', description: 'A changing sequence of notes, with speed, pattern and variation at your fingertips.',
     pots: ['Speed', 'Pattern', 'Variation', 'Unused', 'Unused', 'Unused', 'Unused', 'Unused'],
-    buttons: ['Next program', 'Resync', 'Unused', 'Unused'],
-    led: 'LED 9 · step & priority countdown' },
+    buttons: ['Next program', 'Direct MIDI', 'Freeze sequence', 'Resync'],
+    led: 'LED 3 · direct MIDI / LED 4 · sequence locked / LED 9 · step & priority countdown' },
   { name: 'KarplusResonator', description: 'Twelve resonating strings. Shape their tuning, decay and texture. Audio connections will come later.',
     pots: ['Volume', 'Excitation', 'Decay', 'Brightness', 'Transpose', 'Dry / wet', 'Detune', 'Width'],
     buttons: ['Next program', 'Note set', 'Sustain', 'Clear'],

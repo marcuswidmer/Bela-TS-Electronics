@@ -27,6 +27,7 @@ public:
     void assignNote(int note);
     void includeFractionOfDefaultSequence(float frac);
     void freezeSequenceChanged(bool freezeSequence);
+    bool sequenceFrozen() const { return freezeSequence_; }
 
 
     bool midiClock_ = false;

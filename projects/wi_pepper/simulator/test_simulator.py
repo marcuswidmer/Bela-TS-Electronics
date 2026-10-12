@@ -66,7 +66,7 @@ class SimulatorTest(unittest.TestCase):
         self.assertAlmostEqual(self.engine.state()["pots"][0], .75)
         self.advance(60000)  # The program indication remains lit.
         self.engine.state()
-        self.button(2, True)
+        self.button(3, True)
         self.advance(441)
         state = self.engine.state()
         self.assertEqual(state["leds"][:3], [True, False, False])
@@ -87,6 +87,24 @@ class SimulatorTest(unittest.TestCase):
         self.engine.state()  # Drain the previously lit indicator retained for polling.
         self.advance(44)
         self.assertFalse(self.engine.state()["leds"][3])
+
+    def test_sequence_lock_led_and_held_button(self):
+        self.advance(44)
+        self.assertFalse(self.engine.state()["leds"][4])
+        self.button(2, True)
+        self.advance(220)
+        self.assertFalse(self.engine.state()["leds"][4])
+        self.advance(1)
+        self.assertTrue(self.engine.state()["leds"][4])
+        self.advance(88200)  # Holding does not toggle the lock again.
+        self.assertTrue(self.engine.state()["leds"][4])
+        self.button(2, False)
+        self.advance(221)
+        self.button(2, True)
+        self.advance(221)
+        self.engine.state()  # Drain the previously lit LED retained for polling.
+        self.advance(44)
+        self.assertFalse(self.engine.state()["leds"][4])
 
     def select_juno(self):
         for _ in range(2):

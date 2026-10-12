@@ -24,6 +24,7 @@ public:
     void process(const float* in, float* out);
     bool sequencerLed() const { return program_ == PgmSequencer && sequencerLed_; }
     bool directMidiMode() const { return program_ == PgmSequencer && directMidiMode_; }
+    bool sequenceLocked() const { return program_ == PgmSequencer && sequencer.sequenceFrozen(); }
     Program program() const { return program_; }
     const std::array<float, 4>& cvOutputs() const { return cvOutputs_; }
 
