@@ -20,6 +20,12 @@ public:
     void process();
     void init(float fs, std::function<void(float)> = nullptr, std::function<void(float)> = nullptr, std::function<void(float)> = nullptr, std::function<void(uint8_t)> = nullptr);
     void tick();
+    void advanceClockTime() { ++clockSamples_; }
+    void midiRealtime(uint8_t byte, bool playbackEnabled = true);
+    void midiSongPosition(unsigned int position);
+    void pauseMidiClockPlayback();
+    bool externalMidiClock() const { return externalMidiClock_; }
+    float stepPeriod() const { return externalMidiClock_ ? externalStepPeriod_ : period_; }
     void setPeriod(float period);
     void setButton(bool button) { button_ = button; };
     void setRandomSequence(bool rand);
@@ -39,6 +45,7 @@ private:
     int getNextStep();
     void produceSubsteps();
     void produceMidiSubsteps();
+    void useExternalMidiClock();
 
     bool assignMode_ = true;
     std::vector<NoteInfo> notes_;
@@ -63,6 +70,14 @@ private:
     float midiClockPhase_ = 0.0f;
     float midiClockSamplesPerTick_ = 1.0f;
     bool resyncRequested_ = false;
+    bool externalMidiClock_ = false;
+    bool midiTransportRunning_ = false;
+    bool clockMeasurementValid_ = false;
+    bool positionPending_ = false;
+    unsigned int pendingClockTicks_ = 0, clocksUntilStep_ = 0;
+    unsigned int nextStepPosition_ = 0, clockMeasurementTicks_ = 0;
+    uint64_t clockSamples_ = 0, clockMeasurementStart_ = 0;
+    float externalStepPeriod_ = 0.125f; // Initial estimate: a sixteenth at 120 BPM.
     std::uniform_int_distribution<> substepChance_;
     std::vector<int> randomNotes_;
     std::atomic_bool tickRequested_;

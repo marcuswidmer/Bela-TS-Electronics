@@ -1,4 +1,5 @@
 #include "WiSequencer.hpp"
+#include <algorithm>
 #include <cmath>
 #include <chrono>
 #include <cstdio>
@@ -21,6 +22,12 @@ void WiSequencer::init(float fs, std::function<void(float)> ledCb, std::function
     resyncRequested_ = false;
     tickRequested_ = false;
     midiClock_ = false;
+    externalMidiClock_ = midiTransportRunning_ = false;
+    clockMeasurementValid_ = positionPending_ = false;
+    pendingClockTicks_ = clocksUntilStep_ = 0;
+    nextStepPosition_ = clockMeasurementTicks_ = 0;
+    clockSamples_ = clockMeasurementStart_ = 0;
+    externalStepPeriod_ = 0.125f;
     currentNote_ = 0;
     assignCountdown_ = freezeChangeCountdown_ = 0;
     stepDivider_ = 1;
@@ -54,7 +61,7 @@ void WiSequencer::process()
     if(!fs_)
         return;
 
-    if (midiByteCb_ && midiClockSamplesPerTick_ > 0)
+    if (!externalMidiClock_ && midiByteCb_ && midiClockSamplesPerTick_ > 0)
     {
         midiClockPhase_ += 1.0f;
 
@@ -97,7 +104,27 @@ void WiSequencer::process()
     // if (freezeChangeCountdown_ > 0)
     //     freezeChangeCountdown_--;
 
-    if (midiClock_) {
+    if (externalMidiClock_) {
+        bool stepped = false;
+        if(midiTransportRunning_ && pendingClockTicks_ > 0) {
+            --pendingClockTicks_;
+            if(clocksUntilStep_ == 0) {
+                clocksUntilStep_ = 6; // MIDI Clock is 24 PPQN; steps are sixteenths.
+                samplesPerStep_ = std::max(1, static_cast<int>(std::lround(externalStepPeriod_ * fs_)));
+                stepCountdown_ = samplesPerStep_;
+                currentStep_ = getNextStep();
+                ledCb_(0.01);
+                stepped = true;
+            }
+            --clocksUntilStep_;
+        }
+        // Keep probabilistic substeps between incoming step boundaries, using
+        // the measured tempo. Never free-run into another step without a clock.
+        if(midiTransportRunning_ && !stepped && stepCountdown_ > 0) {
+            produceSubsteps();
+            --stepCountdown_;
+        }
+    } else if (midiClock_) {
         if (tickRequested_) {
             currentStep_ = getNextStep();
             ledCb_(0.01);
@@ -134,8 +161,76 @@ void WiSequencer::process()
 
 void WiSequencer::tick()
 {
+    if(externalMidiClock_) return;
     midiClock_ = true;
     tickRequested_ = true;
+}
+
+void WiSequencer::useExternalMidiClock()
+{
+    if(externalMidiClock_) return;
+    externalMidiClock_ = true;
+    midiTransportRunning_ = true; // Also accept sources sending clock without Start.
+    tickRequested_ = false;
+    resyncRequested_ = false;
+    stepCountdown_ = 0;
+    clocksUntilStep_ = pendingClockTicks_ = 0;
+    nextStepPosition_ = 0;
+    positionPending_ = true;
+}
+
+void WiSequencer::midiRealtime(uint8_t byte, bool playbackEnabled)
+{
+    if(byte != 0xF8 && byte != 0xFA && byte != 0xFB && byte != 0xFC) return;
+    useExternalMidiClock();
+    if(byte == 0xFA) {
+        midiSongPosition(0);
+        midiTransportRunning_ = true;
+        clockMeasurementValid_ = false;
+    } else if(byte == 0xFB) {
+        midiTransportRunning_ = true;
+        clockMeasurementValid_ = false;
+    } else if(byte == 0xFC) {
+        midiTransportRunning_ = false;
+        pendingClockTicks_ = 0;
+        stepCountdown_ = 0;
+        clockMeasurementValid_ = false;
+    } else {
+        // Average over at least six pulses. Coalesced bytes in one Bela block
+        // must not produce a zero tick duration or lose queued steps.
+        if(!clockMeasurementValid_) {
+            clockMeasurementValid_ = true;
+            clockMeasurementStart_ = clockSamples_;
+            clockMeasurementTicks_ = 0;
+        } else {
+            ++clockMeasurementTicks_;
+            const auto elapsed = clockSamples_ - clockMeasurementStart_;
+            if(clockMeasurementTicks_ >= 6 && elapsed > 0) {
+                externalStepPeriod_ = 6.0 * elapsed / (fs_ * clockMeasurementTicks_);
+                clockMeasurementStart_ = clockSamples_;
+                clockMeasurementTicks_ = 0;
+            }
+        }
+        if(midiTransportRunning_ && playbackEnabled) {
+            if(pendingClockTicks_ < 1024) ++pendingClockTicks_;
+        } else pendingClockTicks_ = 0;
+    }
+}
+
+void WiSequencer::midiSongPosition(unsigned int position)
+{
+    useExternalMidiClock();
+    // Song Position Pointer counts sixteenths, the same units as our steps.
+    nextStepPosition_ = position;
+    positionPending_ = true;
+    pendingClockTicks_ = clocksUntilStep_ = 0;
+    stepCountdown_ = 0;
+}
+
+void WiSequencer::pauseMidiClockPlayback()
+{
+    pendingClockTicks_ = 0;
+    if(externalMidiClock_) stepCountdown_ = 0;
 }
 
 void WiSequencer::setSubstepBehaviour(float val)
@@ -170,6 +265,17 @@ void WiSequencer::setRandomSequence(bool rand)
 
 int WiSequencer::getNextStep()
 {
+    if(positionPending_) {
+        unsigned int activeNotes = 0;
+        for(const auto& note : notes_) activeNotes += note.active;
+        unsigned int remaining = nextStepPosition_ % std::max(1u, activeNotes);
+        for(int step = 0; step < numNotes_; ++step) {
+            if(notes_[step].active && remaining-- == 0) {
+                positionPending_ = firstAssignedStepPending_ = false;
+                return step;
+            }
+        }
+    }
     int incrementValue = 1;
     // if (randomSequence_) {
     //     std::uniform_int_distribution<> randomIncr(0, numNotes_);
@@ -236,7 +342,7 @@ void WiSequencer::setPeriod(float period)
     if(fs_ <= 0)
         return;
 
-    // period_ is seconds per beat (quarter note)
+    // period_ is seconds per sequencer step (a sixteenth note).
     float secondsPerClock = period_ / 6.0f;
     midiClockSamplesPerTick_ = secondsPerClock * fs_;
 

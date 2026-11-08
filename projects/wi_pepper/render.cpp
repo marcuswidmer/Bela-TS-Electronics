@@ -1,6 +1,7 @@
 #include <Bela.h>
 #include "WiPepper.hpp"
 #include "ProgramIndicator.hpp"
+#include "MidiInput.hpp"
 #include <libraries/Midi/Midi.h>
 #include <algorithm>
 #include <array>
@@ -12,6 +13,7 @@ namespace {
 WiPepper wiPepper;
 ProgramIndicator programIndicator;
 Midi midi;
+MidiInput midiInput;
 constexpr const char* kMidiInputPort = "hw:1,0,0"; // USB-A host keyboard/interface.
 constexpr const char* kMidiOutputPort = "hw:0,0,0"; // USB device connection to the computer.
 bool midiInputReady = false, midiOutputReady = false;
@@ -24,20 +26,12 @@ void sendMidiByte(uint8_t byte)
 void readMidi()
 {
     if(!midiInputReady) return;
-    auto* parser = midi.getParser();
-    // Consume a bounded snapshot on the render thread, so note assignment and
-    // sequence processing never modify the sequence concurrently.
-    const int available = parser->numAvailableMessages();
-    for(int i = 0; i < available; ++i) {
-        const auto message = parser->getNextChannelMessage();
-        if(message.getType() == kmmNoteOn)
-            wiPepper.midiNoteOn(message.getDataByte(0), message.getDataByte(1), message.getChannel());
-        else if(message.getType() == kmmNoteOff)
-            wiPepper.midiNoteOff(message.getDataByte(0), message.getChannel(), message.getDataByte(1));
-        else if(message.getType() == kmmControlChange)
-            wiPepper.midiControlChange(message.getDataByte(0), message.getDataByte(1), message.getChannel());
-        else if(message.getType() == kmmPitchBend)
-            wiPepper.midiPitchBend(message.getDataByte(0) | (message.getDataByte(1) << 7), message.getChannel());
+    // Bound render-thread work to the input ring's capacity. Decode realtime
+    // bytes before channel data so interleaved clock never corrupts a note.
+    for(unsigned int i = 0; i < 1000; ++i) {
+        const int byte = midi.getInput();
+        if(byte < 0) break;
+        midiInput.process(static_cast<uint8_t>(byte), wiPepper);
     }
 }
 
@@ -107,7 +101,7 @@ bool setup(BelaContext* context, void* userData)
     const float controlSampleRate = context->analogFrames ? context->analogSampleRate : context->audioSampleRate;
     if(!wiPepper.setup(context->audioSampleRate, controlSampleRate, sendMidiByte) || context->audioInChannels < 2 || context->audioOutChannels < 2)
         return false;
-    midi.enableParser(true);
+    midiInput.reset();
     midiInputReady = midi.readFrom(kMidiInputPort) > 0;
     midiOutputReady = midi.writeTo(kMidiOutputPort) > 0;
     if(!midiInputReady || !midiOutputReady)
@@ -189,6 +183,8 @@ void render(BelaContext* context, void* userData)
                     on = wiPepper.sequenceLocked();
                 if(wiPepper.program() == WiPepper::PgmSequencer && led == 5)
                     on = wiPepper.noteOverlay();
+                if(wiPepper.program() == WiPepper::PgmSequencer && led == 6)
+                    on = wiPepper.externalMidiClock();
                 if(wiPepper.program() == WiPepper::PgmJuno)
                     on = led < wiPepper.synthVoices();
                 if(led < WiPepper::ProgramCount && programIndicator.active())
@@ -203,5 +199,5 @@ void render(BelaContext* context, void* userData)
 void cleanup(BelaContext* context, void* userData)
 {
     wiPepper.stopMidiNotes();
-    if(wiPepper.program() == WiPepper::PgmSequencer) sendMidiByte(0xFC);
+    if(wiPepper.program() == WiPepper::PgmSequencer && !wiPepper.externalMidiClock()) sendMidiByte(0xFC);
 }

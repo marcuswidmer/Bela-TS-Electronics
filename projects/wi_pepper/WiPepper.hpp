@@ -20,6 +20,9 @@ public:
     void stopMidiNotes(); // Release output notes on shutdown or mode changes.
     void midiControlChange(unsigned int controller, unsigned int value, unsigned int channel = 0);
     void midiPitchBend(unsigned int value, unsigned int channel = 0);
+    void midiRealtime(uint8_t byte);
+    void midiSongPosition(unsigned int position);
+    bool externalMidiClock() const { return sequencer.externalMidiClock(); }
     unsigned int synthVoices() const { return program_ == PgmJuno ? juno.activeVoices() : 0; }
     void processControls(); // Call at controlSampleRate (Bela analog rate).
     void process(const float* in, float* out);

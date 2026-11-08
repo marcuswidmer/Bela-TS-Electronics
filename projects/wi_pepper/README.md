@@ -35,7 +35,8 @@ do not trigger. Incoming Note On and Note Off messages are also duplicated to
 the computer, preserving pitch, velocity (including release velocity), and
 channel; velocity-zero Note On is forwarded unchanged. CV2–3 stay zero.
 Sequencing and outgoing MIDI Clock pause in
-this mode; entering sends MIDI Stop. Toggling back resumes the saved sequence.
+this mode; entering sends MIDI Stop when using the internal clock.
+Toggling back resumes the saved sequence.
 Program changes reset direct mode to off. Pots have no effect in direct mode.
 The third button (index 2) toggles sequence freeze; LED 4 stays lit while locked.
 Playback, gates and MIDI Clock continue, but MIDI note assignment and pattern,
@@ -66,18 +67,54 @@ receive its notes. Output is not sent to the USB-A host port. This mapping follo
 [Bela's MIDI example](https://docs.bela.io/Communication_2MIDI_2render_8cpp-example.html);
 `amidi -l` on Bela shows the actual device addresses.
 With overlay and direct mode off, positive-velocity Note On messages
-assign notes with an offset of 39. Note 0 ticks the sequencer externally;
-regular incoming MIDI Clock is not used, matching the source. Output Clock
-is six pulses per internal step. With direct mode off, each step/substep gate
+assign notes with an offset of 39. Note 0 ticks the sequencer externally while
+not synchronized to MIDI Clock. Output Clock is six pulses per internal step.
+With direct mode off, each step/substep gate
 sends a Note On on MIDI channel 1 at velocity 100, using the sequence pitch
 plus 39 (clamped to 0–127), followed by Note Off after the duration set by pot 3.
 CV gates remain 10 ms. Repeated pitches
 retrigger; locked sequences keep sending notes. Mode/program changes, repeated
 setup, and shutdown release held output notes.
-Leaving the sequencer sends Stop, clears CV
+Leaving the sequencer sends Stop when using the internal clock, clears CV
 outputs, and pauses sequence processing. Returning preserves assigned notes
-and restores internal timing.
+and the selected clock source.
 Missing MIDI hardware does not prevent the programs from running.
+
+### Ableton MIDI clock
+
+Send Ableton's MIDI sync to the existing MIDI input, `hw:1,0,0`. The USB device
+connection to the computer (`hw:0,0,0`) remains output-only: this project does
+not receive clock from that port. Route the MIDI output of your computer's
+interface into the MIDI IN of the interface connected to Bela. Use `amidi -l`
+on Bela to verify the input address and adjust `kMidiInputPort` if necessary.
+
+In Live's MIDI settings, enable **Sync** on the output port connected to Bela's
+MIDI input, then start Live's transport. Clock is 24 pulses per quarter note;
+the sequencer plays a sixteenth-note step every six pulses. LED 6 (the seventh
+LED from the left) lights when external clock mode has been acquired. The
+speed pot no longer changes the step grid. Note length and assigned-sequence
+substeps follow the measured external tempo; until a full six-pulse interval
+has been received, they use an initial 120 BPM estimate.
+
+MIDI Start resets to the first active step, which plays on the next clock.
+Stop releases the current sequence note and clears its CV gate; clocks while
+stopped do not advance. Continue resumes the saved pulse/step position. Song
+Position Pointer is supported in sixteenth-note units for Live's Song mode.
+Clock-only sources also work, starting on their first pulse. Multiple pulses
+received in one render block are retained rather than collapsed into one tick.
+Realtime bytes interleaved with notes, running status, or SysEx are handled
+without corrupting the other MIDI messages.
+
+External clock and transport are not echoed to the computer. Once selected,
+external clock remains selected until the project restarts; missing clock
+holds the sequence rather than silently switching to the speed pot. Direct
+mode and other programs pause sequence playback and discard incoming playback
+ticks, while still receiving transport and measuring tempo. They do not replay
+a clock backlog on return. Restart Live's transport to realign to step zero.
+
+See [Ableton's MIDI sync guide](https://help.ableton.com/hc/en-us/articles/209071149-Synchronizing-Live-via-MIDI)
+for the output Sync setting and MIDI Clock Type options. Physical MIDI latency
+may require adjusting Live's MIDI Clock Sync Delay after testing on the board.
 
 The local sequencer copy removes Bela logging, reserves space for up to 128
 assigned steps during setup, and resets the step index when replacing a sequence.
@@ -216,6 +253,8 @@ g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/programs_test.c
 /tmp/wi-pepper-programs-test
 g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/midi_output_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-midi-output-test
 /tmp/wi-pepper-midi-output-test
+g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/midi_clock_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-midi-clock-test
+/tmp/wi-pepper-midi-clock-test
 g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/juno_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-juno-test
 /tmp/wi-pepper-juno-test
 ```
@@ -232,6 +271,10 @@ They also compare CV gates and outgoing MIDI Clock against an unedited sequence
 while notes are assigned between steps and at step boundaries.
 Assignment-order tests cover internal steps, external ticks, repeated pitches,
 and appending notes while a sequence is playing.
+MIDI clock/input tests cover six-pulse step division, changing external tempos,
+speed-pot independence, Start/Stop/Continue, song positions, queued clocks,
+mode changes, note releases, running status, and interleaved realtime bytes
+at multiple control sample rates.
 Synth tests cover pitch/bend, polyphony and sustain, clearing, release, chorus, extreme
 controls, program routing, and allocation-free processing at four sample rates.
 The keyboard test covers immediate note onset, channel-specific release,
