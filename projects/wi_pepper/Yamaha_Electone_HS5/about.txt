@@ -1,0 +1,19 @@
+Yamaha Electone HS-5 drum samples
+
+23 mono one-shot recordings from a Yamaha Electone HS-5 organ (1987),
+originally sampled and distributed as freeware by JMD (jm1200.fr).
+Source: /Users/marwidme/Downloads/S760-HS5 DrumKit/HS5DK.OUT
+Source page: https://www.jm1200.fr/index.php?r=6
+
+Format: 16-bit PCM WAV, mono, 32000 Hz, original unity note 60.
+Audio was extracted directly from the disk image using its stored
+one-shot start/end points. No normalization, EQ, de-emphasis filter,
+resampling, fades or other audio processing was applied.
+Every exported WAV payload was verified byte-for-byte against its
+source waveform in the disk image. The source folder was not changed.
+
+This collection is kept separate from the other sample collections.
+These are the 23 original waveforms, without the Roland patch
+envelopes, filters or additional transposed keyboard mappings baked in.
+See Original Readme.txt for the creator's original freeware notice,
+and conversion-manifest.json for names, offsets and checksums.

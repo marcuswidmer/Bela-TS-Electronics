@@ -27,14 +27,9 @@ int main()
     for(auto byte : midi) sawClock |= byte == 0xF8;
     assert(sawGate && sawClock);
     pepper.pressButton(3);
-    assert(pepper.noteOverlay());
-    const auto beforeOverlay = midi.size();
-    pepper.midiNoteOn(76, 80, 2);
-    pepper.midiNoteOff(76, 2, 30);
-    const std::vector<uint8_t> overlayBytes(midi.begin() + beforeOverlay, midi.end());
-    assert(overlayBytes == (std::vector<uint8_t>{0x92, 76, 80, 0x82, 76, 30}));
-    pepper.pressButton(3);
-    assert(!pepper.noteOverlay());
+    assert(pepper.drums().currentPattern() == 1);
+    for(unsigned int i = 1; i < WiAudioDrivenDrumMachine::PatternCount; ++i) pepper.pressButton(3);
+    assert(pepper.drums().currentPattern() == 0);
 
     // Replace a longer sequence with a single note without a stale step index.
     pepper.midiNoteOn(60, 100);
@@ -76,7 +71,7 @@ int main()
     assert(pepper.program() == WiPepper::PgmSequencer);
     assert(!pepper.setup(0));
 
-    // At 1 kHz, a step lights the LED for 10 ticks; overlay does not alter timing.
+    // At 1 kHz, a step lights the LED for 10 ticks; drum selection does not alter timing.
     assert(pepper.setup(44100, 1000));
     pots[0] = pots[2] = 0;
     pepper.setPots(pots);
@@ -87,7 +82,7 @@ int main()
     pepper.processControls();
     assert(!pepper.sequencerLed());
     pepper.pressButton(3);
-    assert(pepper.noteOverlay());
+    assert(pepper.drums().currentPattern() == 1);
     for(int i = 0; i < 1000; ++i) {
         pepper.processControls();
         assert(!pepper.sequencerLed());
@@ -96,7 +91,7 @@ int main()
     pepper.processControls();
     assert(!pepper.sequencerLed());
     pepper.pressButton(3);
-    assert(!pepper.noteOverlay());
+    assert(pepper.drums().currentPattern() == 2);
     pepper.processControls();
     assert(!pepper.sequencerLed());
     pepper.pressButton(0);

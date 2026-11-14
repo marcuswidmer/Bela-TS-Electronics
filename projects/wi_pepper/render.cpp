@@ -101,6 +101,10 @@ bool setup(BelaContext* context, void* userData)
     const float controlSampleRate = context->analogFrames ? context->analogSampleRate : context->audioSampleRate;
     if(!wiPepper.setup(context->audioSampleRate, controlSampleRate, sendMidiByte) || context->audioInChannels < 2 || context->audioOutChannels < 2)
         return false;
+    if(!wiPepper.loadDrumSamples(".")) {
+        std::fprintf(stderr, "Drum samples: %s\n", wiPepper.drums().loadError().c_str());
+        return false;
+    }
     midiInput.reset();
     midiInputReady = midi.readFrom(kMidiInputPort) > 0;
     midiOutputReady = midi.writeTo(kMidiOutputPort) > 0;
@@ -119,6 +123,9 @@ bool setup(BelaContext* context, void* userData)
             pinMode(context, 0, pin, INPUT);
     Bela_setAudioInputGain(0, 0.0f); // Left input
     Bela_setAudioInputGain(1, 0.0f); // Right input
+    // Equivalent to -D 3: set both hardware line outputs during setup.
+    if(Bela_setLineOutLevel(-1, 3.0f) != 0)
+        std::fprintf(stderr, "Could not set Bela line-out level to +3 dB\n");
     inputPeak = 0.0f;
     for (unsigned int led = 0; led < kLedCount; ++led) {
         const float thresholdDb = -48.0f + 5.0f * led;
@@ -182,7 +189,7 @@ void render(BelaContext* context, void* userData)
                 if(wiPepper.program() == WiPepper::PgmSequencer && led == 4)
                     on = wiPepper.sequenceLocked();
                 if(wiPepper.program() == WiPepper::PgmSequencer && led == 5)
-                    on = wiPepper.noteOverlay();
+                    on = wiPepper.rimDrumPattern();
                 if(wiPepper.program() == WiPepper::PgmSequencer && led == 6)
                     on = wiPepper.externalMidiClock();
                 if(wiPepper.program() == WiPepper::PgmJuno)

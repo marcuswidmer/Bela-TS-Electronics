@@ -6,6 +6,7 @@
 #include <random>
 #include <functional>
 #include <vector>
+#include "WiAudioDrivenDrumMachine.hpp"
 
 const float ledOnDuration = 0.01f; // 10 ms
 
@@ -26,6 +27,15 @@ public:
     void pauseMidiClockPlayback();
     bool externalMidiClock() const { return externalMidiClock_; }
     float stepPeriod() const { return externalMidiClock_ ? externalStepPeriod_ : period_; }
+    bool setupAudio(float rate) { return drums_.setup(rate); }
+    bool loadDrumSamples(const std::string& directory) { return drums_.loadSamples(directory); }
+    void setDrumControls(float volume, float filter) {
+        drums_.setControls(volume, filter);
+    }
+    void nextDrumPattern() { drums_.nextPattern(); }
+    void processAudio(float input, float& left, float& right);
+    void silenceDrums() { drums_.silence(); }
+    const WiAudioDrivenDrumMachine& drums() const { return drums_; }
     void setPeriod(float period);
     void setButton(bool button) { button_ = button; };
     void setRandomSequence(bool rand);
@@ -78,6 +88,7 @@ private:
     unsigned int nextStepPosition_ = 0, clockMeasurementTicks_ = 0;
     uint64_t clockSamples_ = 0, clockMeasurementStart_ = 0;
     float externalStepPeriod_ = 0.125f; // Initial estimate: a sixteenth at 120 BPM.
+    WiAudioDrivenDrumMachine drums_;
     std::uniform_int_distribution<> substepChance_;
     std::vector<int> randomNotes_;
     std::atomic_bool tickRequested_;

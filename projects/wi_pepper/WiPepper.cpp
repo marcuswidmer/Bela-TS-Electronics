@@ -15,7 +15,6 @@ bool WiPepper::setup(float sampleRate, float controlSampleRate,
     program_ = PgmSequencer;
     speedSmoothed_ = 0;
     directMidiMode_ = false;
-    noteOverlay_ = false;
     directPitch_ = 0;
     directTriggerCountdown_ = 0;
     stepCountdown_ = priorityCountdown_ = syncCountdown_ = 0;
@@ -31,7 +30,7 @@ bool WiPepper::setup(float sampleRate, float controlSampleRate,
         [this](float seconds) { priorityCountdown_ = std::lround(seconds * controlSampleRate_); },
         [this](float seconds) { syncCountdown_ = std::lround(seconds * controlSampleRate_); },
         [this](uint8_t byte) { if(midiOutput_) midiOutput_(byte); });
-    return true;
+    return sequencer.setupAudio(sampleRate);
 }
 
 void WiPepper::setPots(const std::array<float, 8>& pots)
@@ -41,17 +40,18 @@ void WiPepper::setPots(const std::array<float, 8>& pots)
     volume = pots_[0];
     resonator.setPots(pots_);
     juno.setPots(pots_);
+    sequencer.setDrumControls(pots_[4], pots_[5]);
 }
 
 void WiPepper::pressButton(unsigned int button)
 {
     if(button == 0) {
+        sequencer.silenceDrums();
         stopMidiNotes();
         if(program_ == PgmSequencer && !externalMidiClock() && midiOutput_) midiOutput_(0xFC);
         juno.panic(); // Do not carry held notes, pedals or chorus tails across programs.
         program_ = static_cast<Program>((program_ + 1) % ProgramCount);
         directMidiMode_ = false;
-        noteOverlay_ = false;
         directPitch_ = 0;
         directTriggerCountdown_ = 0;
         cvOutputs_ = {};
@@ -63,6 +63,7 @@ void WiPepper::pressButton(unsigned int button)
         sequencer.midiClock_ = false;
     } else if(program_ == PgmSequencer) {
         if(button == 1) {
+            sequencer.silenceDrums();
             stopMidiNotes();
             directMidiMode_ = !directMidiMode_;
             directPitch_ = 0;
@@ -75,9 +76,8 @@ void WiPepper::pressButton(unsigned int button)
             if(directMidiMode_ && !externalMidiClock() && midiOutput_) midiOutput_(0xFC);
         } else if(button == 2) {
             sequencer.freezeSequenceChanged(!sequencer.sequenceFrozen());
-        } else if(button == 3 && !directMidiMode_) {
-            noteOverlay_ = !noteOverlay_;
-            if(!noteOverlay_) stopLiveMidiNotes();
+        } else if(button == 3) {
+            sequencer.nextDrumPattern();
         }
     } else if(program_ == PgmJuno) {
         juno.pressButton(button);
@@ -89,9 +89,9 @@ void WiPepper::pressButton(unsigned int button)
 void WiPepper::midiNoteOn(unsigned int note, unsigned int velocity, unsigned int channel)
 {
     if(note > 127 || velocity > 127 || channel > 15) return;
-    if(directMidiMode() || noteOverlay()) {
+    if(directMidiMode()) {
         sendLiveMidiNote(0x90, note, velocity, channel);
-        if(noteOverlay() || !velocity) return;
+        if(!velocity) return;
     }
     if(!velocity) { midiNoteOff(note, channel); return; }
     if(program_ == PgmSequencer) {
@@ -107,7 +107,7 @@ void WiPepper::midiNoteOn(unsigned int note, unsigned int velocity, unsigned int
 void WiPepper::midiNoteOff(unsigned int note, unsigned int channel, unsigned int velocity)
 {
     if(note > 127 || channel > 15 || velocity > 127) return;
-    if(directMidiMode() || noteOverlay()) sendLiveMidiNote(0x80, note, velocity, channel);
+    if(directMidiMode()) sendLiveMidiNote(0x80, note, velocity, channel);
     if(program_ == PgmJuno) juno.noteOff(note, channel);
 }
 
@@ -234,4 +234,6 @@ void WiPepper::process(const float* in, float* out)
         resonator.process(in[0], out[0], out[1]);
     else if(program_ == PgmJuno)
         juno.process(out[0], out[1]);
+    else if(program_ == PgmSequencer && !directMidiMode_)
+        sequencer.processAudio(in[0], out[0], out[1]);
 }

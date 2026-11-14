@@ -22,7 +22,7 @@ def build(destination):
         "g++", "-std=c++14", "-O2", "-shared", "-fPIC",
         str(ROOT / "PepperSimulator.cc"),
         *[str(PROJECT / name) for name in
-          ("WiPepper.cpp", "WiSequencer.cpp", "KarplusResonator.cpp", "JunoSynth.cpp")],
+          ("WiPepper.cpp", "WiSequencer.cpp", "WiAudioDrivenDrumMachine.cpp", "KarplusResonator.cpp", "JunoSynth.cpp")],
         "-o", str(destination),
     ], check=True)
 
@@ -31,19 +31,48 @@ class Engine:
     def __init__(self, library):
         self.lib = ctypes.CDLL(str(library))
         self.lib.pepper_create.restype = ctypes.c_void_p
+        self.lib.pepper_load_samples.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        self.lib.pepper_load_samples.restype = ctypes.c_int
+        self.lib.pepper_sample_error.argtypes = [ctypes.c_void_p]
+        self.lib.pepper_sample_error.restype = ctypes.c_char_p
+        self.lib.pepper_pattern_velocity.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_uint]
+        self.lib.pepper_pattern_velocity.restype = ctypes.c_float
+        self.lib.pepper_pattern_name.argtypes = [ctypes.c_uint]
+        self.lib.pepper_pattern_name.restype = ctypes.c_char_p
+        self.lib.pepper_voice_name.argtypes = [ctypes.c_uint, ctypes.c_uint]
+        self.lib.pepper_voice_name.restype = ctypes.c_char_p
+        self.lib.pepper_drum_pattern_count.restype = ctypes.c_uint
+        self.pattern_count = self.lib.pepper_drum_pattern_count()
+        self.lib.pepper_drum_step_count.restype = ctypes.c_uint
+        self.lib.pepper_drum_sample_count.restype = ctypes.c_uint
+        self.step_count = self.lib.pepper_drum_step_count()
+        self.sample_count = self.lib.pepper_drum_sample_count()
+        self.drum_patterns = [[[self.lib.pepper_pattern_velocity(pattern, voice, step)
+                                for step in range(self.step_count)] for voice in range(7)] for pattern in range(self.pattern_count)]
+        self.pattern_names = [self.lib.pepper_pattern_name(i).decode() for i in range(self.pattern_count)]
+        self.voice_names = [[self.lib.pepper_voice_name(pattern, voice).decode() for voice in range(7)] for pattern in range(self.pattern_count)]
         self.lib.pepper_destroy.argtypes = [ctypes.c_void_p]
         self.lib.pepper_advance.argtypes = [ctypes.c_void_p, ctypes.c_uint]
         self.lib.pepper_render.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.POINTER(ctypes.c_float)]
         self.lib.pepper_note.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_uint]
         self.lib.pepper_panic.argtypes = [ctypes.c_void_p]
+        self.lib.pepper_source.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_float]
+        self.lib.pepper_clock.argtypes = [ctypes.c_void_p, ctypes.c_float, ctypes.c_uint]
+        self.lib.pepper_midi_byte.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        self.lib.pepper_drum_state.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
         self.audio_buffer = bytearray()
         self.audio_frames = 0
         self.lib.pepper_pot.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_float]
         self.lib.pepper_button.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int]
         self.lib.pepper_state.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
-        for name in ("destroy", "advance", "render", "note", "panic", "pot", "button", "state"):
+        for name in ("destroy", "advance", "render", "note", "panic", "pot", "button", "state",
+                     "source", "clock", "midi_byte", "drum_state"):
             getattr(self.lib, "pepper_" + name).restype = None
         self.handle = self.lib.pepper_create()
+        if not self.lib.pepper_load_samples(self.handle, str(PROJECT).encode()):
+            error = self.lib.pepper_sample_error(self.handle).decode()
+            self.lib.pepper_destroy(self.handle)
+            raise RuntimeError(error)
         self.lock = threading.Lock()
         self.stop = threading.Event()
         self.last_client = time.monotonic()
@@ -79,19 +108,37 @@ class Engine:
 
     def state(self):
         values = (ctypes.c_float * 24)()
+        drums = (ctypes.c_float * 47)()
         with self.lock:
             self.last_client = time.monotonic()
             self.lib.pepper_state(self.handle, values)
+            self.lib.pepper_drum_state(self.handle, drums)
+        pattern = int(drums[45])
         return {"program": int(values[0]), "pots": list(values[1:9]),
                 "buttons": [bool(x) for x in values[9:13]],
                 "leds": [bool(x) for x in values[13:23]],
                 "indicating": bool(values[23]),
-                "io": {"audio": True, "cv": False}}
+                "io": {"audio": True, "cv": False},
+                "drums": {"loaded": int(drums[0]), "step": int(drums[1]), "bpm": drums[2],
+                          "external": bool(drums[3]), "levels": list(drums[16:23]),
+                          "triggers": [int(x) for x in drums[23:30]],
+                          "intensities": list(drums[30:37]), "velocities": list(drums[37:44]),
+                          "pattern": self.drum_patterns[pattern], "patternIndex": pattern,
+                          "name": self.pattern_names[pattern], "patterns": self.pattern_names,
+                          "kit": "Lo-fi" if pattern < 3 else "Lo-fi + Yamaha rim", "stepCount": self.step_count, "sampleCount": self.sample_count,
+                          "voices": self.voice_names[pattern], "filter": drums[46]},
+                "clock": {"bpm": drums[4], "running": bool(drums[5])},
+                "source": {"enabled": bool(drums[6]), "frequency": drums[7],
+                           "level": drums[8], "eq": list(drums[9:16]),
+                           "waveform": "sine" if drums[44] else "saw"}}
 
     def command(self, message):
         if not isinstance(message, dict):
             raise ValueError("Expected an object")
         kind, index = message.get("type"), message.get("index")
+        if kind in ("source", "clock", "midi"):
+            self.extra_command(kind, message)
+            return
         if kind == "panic":
             with self.lock:
                 self.lib.pepper_panic(self.handle)
@@ -114,6 +161,48 @@ class Engine:
                 self.lib.pepper_button(self.handle, index, message["pressed"])
             else:
                 raise ValueError("Unknown control")
+
+    def extra_command(self, kind, message):
+        def number(key, low, high):
+            value = message.get(key)
+            if type(value) not in (int, float) or not math.isfinite(value) or not low <= value <= high:
+                raise ValueError(f"{key} must be between {low} and {high}")
+            return value
+        if kind == "source":
+            if type(message.get("enabled")) is not bool:
+                raise ValueError("enabled must be a boolean")
+            frequency, level = number("frequency", 35, 8000), number("level", 0, 1)
+            waveform = message.get("waveform", "saw")
+            if waveform not in ("saw", "sine"):
+                raise ValueError("waveform must be saw or sine")
+            eq = message.get("eq")
+            if not isinstance(eq, list) or len(eq) != 7 or any(
+                type(x) not in (int, float) or not math.isfinite(x) or not -24 <= x <= 24 for x in eq
+            ):
+                raise ValueError("eq must contain seven gains between -24 and 24 dB")
+            with self.lock:
+                self.last_client = time.monotonic()
+                for index, value in enumerate([message["enabled"], frequency, level, *eq]):
+                    self.lib.pepper_source(self.handle, index, value)
+                self.lib.pepper_source(self.handle, 10, waveform == "sine")
+        elif kind == "clock":
+            bpm = number("bpm", 20, 300)
+            transport = message.get("transport")
+            if transport not in ("tempo", "start", "stop", "continue"):
+                raise ValueError("Unknown clock transport")
+            with self.lock:
+                self.last_client = time.monotonic()
+                self.lib.pepper_clock(self.handle, bpm, ("tempo", "start", "stop", "continue").index(transport))
+        else:
+            data = message.get("bytes")
+            if not isinstance(data, list) or not 1 <= len(data) <= 128 or any(
+                type(x) is not int or not 0 <= x <= 255 for x in data
+            ):
+                raise ValueError("Expected 1 to 128 MIDI bytes")
+            with self.lock:
+                self.last_client = time.monotonic()
+                for byte in data:
+                    self.lib.pepper_midi_byte(self.handle, byte)
 
     def close(self):
         self.stop.set()

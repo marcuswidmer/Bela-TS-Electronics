@@ -1,14 +1,14 @@
 'use strict';
 
 const programs = [
-  { name: 'Sequencer', description: 'A changing sequence of notes, with speed, pattern and variation at your fingertips.',
-    pots: ['Speed', 'Pattern', 'Variation', 'MIDI note length', 'Unused', 'Unused', 'Unused', 'Unused'],
-    buttons: ['Next program', 'Direct MIDI', 'Freeze sequence', 'Note overlay'],
-    led: 'LED 3 · direct MIDI / LED 4 · sequence locked / LED 5 · note overlay / LED 9 · step & priority countdown' },
-  { name: 'KarplusResonator', description: 'Twelve resonating strings. Shape their tuning, decay and texture. Audio connections will come later.',
+  { name: 'Sequencer + drums', description: 'Three original lo-fi grooves plus three Yamaha-rim variations, each one bar. Turn Filter to move from kick only to the full kit. The fourth button cycles patterns.',
+    pots: ['Speed', 'Pattern', 'Variation', 'MIDI note length', 'Drum volume', 'Filter', 'Unused', 'Unused'],
+    buttons: ['Next program', 'Direct MIDI', 'Freeze sequence', 'Next pattern'],
+    led: 'LED 3 · direct MIDI / LED 4 · sequence locked / LED 5 · Yamaha rim / LED 6 · MIDI clock / LED 9 · step & priority countdown' },
+  { name: 'KarplusResonator', description: 'Twelve resonating strings. The saw + EQ source can excite the audio input.',
     pots: ['Volume', 'Excitation', 'Decay', 'Brightness', 'Transpose', 'Dry / wet', 'Detune', 'Width'],
     buttons: ['Next program', 'Note set', 'Sustain', 'Clear'],
-    led: 'LEDs 0–9 · input meter (no audio connected)' },
+    led: 'LEDs 3–9 · input meter' },
   { name: 'JUNO', description: 'Six voices, warm oscillator layers and stereo chorus. Enable audio, raise Volume, and play the keyboard below.',
     pots: ['Volume', 'Cutoff', 'Resonance', 'Env depth', 'Attack', 'Decay', 'Sustain', 'Release'],
     buttons: ['Next program', 'Waveform', 'Chorus', 'Panic'],
@@ -146,6 +146,8 @@ function showProgram(index) {
   if (program !== index) releaseNotes();
   program = index;
   for (const key of noteButtons.values()) key.disabled = !online || program !== 2;
+  document.querySelector('#drum-controls').hidden = index !== 0;
+  document.querySelector('#source-controls').hidden = index !== 1;
   const info = programs[index];
   document.querySelector('#program-name').textContent = info.name;
   document.querySelector('#program-number').textContent = `0${index} / 0${programs.length}`;
@@ -170,6 +172,7 @@ async function poll() {
     if (!programs[state.program]) throw new Error('Unknown program');
     connection(true); document.querySelector('#error').hidden = true;
     if (program !== state.program) showProgram(state.program);
+    updateDrums(state);
     state.pots.forEach((value, i) => {
       if (!knobs[i].dragging && performance.now() - knobs[i].editedAt > 250) paintKnob(i, value);
     });
@@ -177,7 +180,7 @@ async function poll() {
     state.leds.forEach((on, i) => leds[i].classList.toggle('on', on));
     const lit = state.leds.map((on, i) => on ? i : null).filter(i => i !== null);
     document.querySelector('#leds').setAttribute('aria-label', lit.length ? `LED ${lit.join(', ')} on` : 'All LEDs off');
-    document.querySelector('#led-description').textContent = state.indicating ? `LED ${state.program} · four program flashes` : programs[state.program].led;
+    document.querySelector('#led-description').textContent = programs[state.program].led;
   } catch (_) {
     connection(false);
     for (const led of leds) led.classList.remove('on');
@@ -322,6 +325,167 @@ window.addEventListener('keydown', event => {
   event.preventDefault(); if (!event.repeat) noteDown(60 + index, event.code);
 });
 window.addEventListener('keyup', event => noteUp(event.code));
+
+// This source runs natively before Pepper; the browser only edits controls.
+const bandNames = ['Kick', 'Tom', 'Snare', 'Conga', 'Claves', 'Perc', 'Hi-hat'];
+const bandHz = [110, 220, 440, 880, 1760, 3520, 7040];
+const eqControls = [];
+const patternRows = [];
+let drumState = null, sourceEditedAt = -Infinity, sourceDirty = false;
+const sourceEnabled = document.querySelector('#source-enabled');
+const sourceFrequency = document.querySelector('#source-frequency');
+const sourceLevel = document.querySelector('#source-level');
+const sourceWaveform = document.querySelector('#source-waveform');
+const clockBpm = document.querySelector('#clock-bpm');
+for (let i = 0; i < 7; i++) {
+  const row = document.createElement('div'); row.className = 'eq-row';
+  row.innerHTML = `<label for="eq-${i}">${bandNames[i]}<small>${bandHz[i]} Hz</small></label><input id="eq-${i}" type="range" min="-24" max="24" step="0.5" value="0"><output>0 dB</output><span class="band-activity" aria-label="${bandNames[i]} activity"><i></i></span>`;
+  document.querySelector('#source-eq').append(row);
+  const slider = row.querySelector('input'), output = row.querySelector('output');
+  eqControls.push({slider, output, meter: row.querySelector('.band-activity i'), indicator: row.querySelector('.band-activity'), hits: 0});
+  slider.addEventListener('input', () => {
+    output.textContent = `${Number(slider.value) > 0 ? '+' : ''}${slider.value} dB`;
+    editSource();
+  });
+}
+function editSource() {
+  sourceEditedAt = performance.now(); sourceDirty = true;
+  document.querySelector('#source-level-value').textContent = `${Math.round(sourceLevel.value * 100)}%`;
+}
+function sendSource() {
+  const frequency = Number(sourceFrequency.value);
+  if (!Number.isFinite(frequency) || frequency < 35 || frequency > 8000) return;
+  sendControl({type: 'source', enabled: sourceEnabled.checked, frequency,
+    waveform: sourceWaveform.value, level: Number(sourceLevel.value), eq: eqControls.map(c => Number(c.slider.value))});
+}
+for (const control of [sourceEnabled, sourceFrequency, sourceLevel, sourceWaveform]) control.addEventListener('input', editSource);
+setInterval(() => {
+  if (sourceDirty && online) { sourceDirty = false; sendSource(); }
+}, 35);
+document.querySelector('#eq-flat').addEventListener('click', () => {
+  eqControls.forEach(c => { c.slider.value = 0; c.output.textContent = '0 dB'; }); editSource();
+});
+document.querySelector('#drum-demo').addEventListener('click', () => {
+  if (!online) return;
+  if (!audioEnabled) audioToggle.click();
+  if (program !== 0) { audioStatus.textContent = 'Select Sequencer with Button 0 for the drums'; return; }
+  for (const [index, value] of [[0, (8-.4)/14], [4, .8], [5, 1]]) {
+    paintKnob(index, value); knobs[index].editedAt = performance.now();
+    sendControl({type: 'pot', index, value});
+  }
+  if (drumState?.external) sendControl({type: 'clock', bpm: Number(clockBpm.value), transport: 'start'});
+});
+for (const [id, opening] of [['kick-only', 0], ['hat-only', 1]]) {
+  document.querySelector(`#${id}`).addEventListener('click', () => {
+    document.querySelector('#drum-demo').click();
+    editKnob(5, opening);
+  });
+}
+let shownPattern = -1;
+const voiceMeters = [];
+function updateDrums(state) {
+  drumState = state.drums;
+  document.querySelector('#drum-pattern-name').textContent = `${state.drums.patternIndex+1} / ${state.drums.patterns.length} · ${state.drums.name}`;
+  document.querySelector('#drum-status').textContent = `${state.drums.loaded}/${state.drums.sampleCount} samples · ${state.drums.kit} · filter ${Math.round(state.drums.filter*100)}% · ${state.drums.step < 0 ? 'waiting for step' : `step ${state.drums.step+1}/${state.drums.stepCount}`}`;
+  document.querySelector('#clock-status').textContent = `${state.drums.external ? 'MIDI clock override' : 'Internal tempo'} · ${state.drums.bpm.toFixed(1)} BPM${state.clock.running ? ' · test clock running' : ''}`;
+  if (performance.now() - sourceEditedAt > 500) {
+    sourceEnabled.checked = state.source.enabled;
+    sourceWaveform.value = state.source.waveform;
+    if (document.activeElement !== sourceFrequency) sourceFrequency.value = Number(state.source.frequency.toFixed(1));
+    sourceLevel.value = state.source.level;
+    document.querySelector('#source-level-value').textContent = `${Math.round(state.source.level*100)}%`;
+    eqControls.forEach((c, i) => {
+      if (document.activeElement !== c.slider) c.slider.value = state.source.eq[i];
+      c.output.textContent = `${state.source.eq[i] > 0 ? '+' : ''}${state.source.eq[i]} dB`;
+    });
+  }
+  if (!voiceMeters.length) {
+    for (let i=0; i<7; i++) {
+      const row=document.createElement('div'); row.className='voice-level';
+      const label=document.createElement('span'), meter=document.createElement('meter');
+      meter.min=0; meter.max=1; row.append(label,meter);
+      document.querySelector('#drum-voices').append(row); voiceMeters.push({label,meter,hits:0});
+    }
+  }
+  voiceMeters.forEach((c,i) => {
+    c.label.textContent=state.drums.voices[i]; c.meter.value=state.drums.intensities[i];
+    c.meter.setAttribute('aria-label', `${state.drums.voices[i]} filter level`);
+    if (c.hits !== state.drums.triggers[i]) {
+      c.label.classList.add('hit'); setTimeout(()=>c.label.classList.remove('hit'),100);
+    }
+    c.hits=state.drums.triggers[i];
+  });
+  if (shownPattern !== state.drums.patternIndex) {
+    shownPattern=state.drums.patternIndex; patternRows.length=0;
+    document.querySelector('#drum-pattern').replaceChildren();
+    state.drums.pattern.forEach(() => patternRows.push([]));
+    for (let bar=0; bar<state.drums.stepCount/16; bar++) {
+      const heading=document.createElement('div'); heading.className='pattern-bar-label';
+      heading.textContent=`BAR ${bar+1}`;
+      document.querySelector('#drum-pattern').append(heading);
+      state.drums.pattern.forEach((notes, voice) => {
+        const row=document.createElement('div'); row.className='pattern-row';
+        const label=document.createElement('span'); label.textContent=state.drums.voices[voice]; row.append(label);
+        notes.slice(bar*16,bar*16+16).forEach((accent,offset) => {
+          const step=bar*16+offset;
+          const cell=document.createElement('i'); cell.className='pattern-step';
+          cell.classList.toggle('note',accent>0); cell.style.setProperty('--accent',accent);
+          cell.title=`${state.drums.voices[voice]} · bar ${bar+1}, step ${offset+1}${accent ? ` · ${Math.round(accent*100)}% accent` : ' · rest'}`;
+          row.append(cell); patternRows[voice].push(cell);
+        });
+        row.setAttribute('role','img');
+        row.setAttribute('aria-label',`${state.drums.voices[voice]}, bar ${bar+1}, hits on steps ${notes.slice(bar*16,bar*16+16).flatMap((x,i)=>x?[i+1]:[]).join(', ')}`);
+        document.querySelector('#drum-pattern').append(row);
+      });
+    }
+  }
+  patternRows.forEach((cells,voice)=>cells.forEach((cell,step)=>{
+    cell.classList.toggle('current',step===state.drums.step);
+    cell.classList.toggle('audible',step===state.drums.step && state.drums.velocities[voice]>0);
+  }));
+}
+for (const transport of ['start', 'stop', 'continue']) {
+  document.querySelector(`#clock-${transport}`).addEventListener('click', () => {
+    const bpm = Number(clockBpm.value);
+    if (bpm >= 20 && bpm <= 300) sendControl({type: 'clock', bpm, transport});
+  });
+}
+clockBpm.addEventListener('change', () => {
+  const bpm = Number(clockBpm.value);
+  if (bpm >= 20 && bpm <= 300) sendControl({type: 'clock', bpm, transport: 'tempo'});
+});
+
+let midiAccess = null, midiPort = null, midiBytes = [];
+const midiSelect = document.querySelector('#midi-input');
+function chooseMidiInput() {
+  if (midiPort) midiPort.onmidimessage = null;
+  midiPort = midiAccess.inputs.get(midiSelect.value);
+  if (midiPort) midiPort.onmidimessage = event => {
+    if (midiBytes.length + event.data.length > 128) flushMidi();
+    midiBytes.push(...event.data);
+  };
+  document.querySelector('#midi-status').textContent = midiPort ? `Receiving ${midiPort.name}. Enable Sync on Ableton’s corresponding output.` : 'No MIDI input selected';
+}
+function refreshMidiInputs() {
+  const selected = midiSelect.value;
+  midiSelect.replaceChildren(new Option('Choose input…', ''));
+  for (const input of midiAccess.inputs.values()) midiSelect.add(new Option(input.name, input.id));
+  midiSelect.value = selected;
+  chooseMidiInput();
+}
+function flushMidi() {
+  if (midiBytes.length && online) sendControl({type: 'midi', bytes: midiBytes.splice(0, 128)});
+}
+setInterval(flushMidi, 10);
+midiSelect.addEventListener('change', chooseMidiInput);
+document.querySelector('#midi-connect').addEventListener('click', async () => {
+  try {
+    if (!navigator.requestMIDIAccess) throw new Error('Web MIDI requires a supporting browser such as Chrome');
+    midiAccess = await navigator.requestMIDIAccess({sysex: false});
+    midiSelect.hidden = false; refreshMidiInputs();
+    midiAccess.onstatechange = refreshMidiInputs;
+  } catch (error) { document.querySelector('#midi-status').textContent = error.message; }
+});
 
 showProgram(0);
 connection(false);

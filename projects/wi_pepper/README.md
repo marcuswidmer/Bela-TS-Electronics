@@ -15,8 +15,8 @@ countdowns on LED 9 in program 0, and active-voice count in program 2. Button de
 
 Run `python3 projects/wi_pepper/simulator/run.py` from the repository root,
 then open **http://127.0.0.1:8765**. The frontplate provides interactive pots,
-buttons, and live LEDs using the real C++ programs. Audio and CV jacks are
-visible placeholders; their I/O is not implemented.
+buttons, and live LEDs using the real C++ programs. Stereo browser audio and
+a saw + EQ audio input are implemented; CV jacks remain placeholders.
 See [simulator/README.md](simulator/README.md) for controls and setup.
 
 ## Sequencer (program 0)
@@ -44,15 +44,15 @@ variation changes are blocked. Speed, assigned-sequence substep division and
 probability, and MIDI note length remain adjustable. The lock
 applies immediately and survives direct mode and program changes; setup starts
 unlocked. Press again to unlock. Direct MIDI-to-CV notes still work while locked.
-The fourth button (index 3) toggles live MIDI note overlay in non-direct mode;
-LED 5 stays lit while enabled. Incoming notes play over the running sequence
-instead of assigning new steps, preserving their channel and velocity. Their
-length follows incoming releases; pot 3 controls only sequence notes. The
-sequence, CV outputs and MIDI Clock continue, including while locked. Shared
-channel/pitch notes stay on until both the live input and sequence release them.
-Turning overlay off releases its held notes. Direct mode temporarily suspends
-overlay; program changes and setup reset it to off. This replaces Button 3's
-MIDI resync action. Audio outputs are silent.
+The fourth button (index 3, rightmost) cycles six one-bar drum grooves, then returns
+to the first. LED 5 is lit for the Yamaha-rim variations (patterns 4–6). Selection works while sequence freeze or
+direct MIDI mode is active, preserves the drum beat position, and remains
+selected across program changes. Setup starts at pattern 1. This replaces
+live MIDI note overlay. Audio outputs L/R carry the stereo drum mix.
+
+Device setup sets both hardware line outputs to +3 dB with
+`Bela_setLineOutLevel(-1, 3.0f)`, equivalent to `-D 3`. This overrides the
+startup line-out setting for all programs; headphone gain is separate.
 
 Analog output 0 carries pitch (note / 60, clamped to 0–1), output 1 carries
 10 ms step/substep gates, and output 2 retains the source's sync output
@@ -66,7 +66,7 @@ cable used for the IDE). Select Bela as a MIDI input device in your DAW to
 receive its notes. Output is not sent to the USB-A host port. This mapping follows
 [Bela's MIDI example](https://docs.bela.io/Communication_2MIDI_2render_8cpp-example.html);
 `amidi -l` on Bela shows the actual device addresses.
-With overlay and direct mode off, positive-velocity Note On messages
+With direct mode off, positive-velocity Note On messages
 assign notes with an offset of 39. Note 0 ticks the sequencer externally while
 not synchronized to MIDI Clock. Output Clock is six pulses per internal step.
 With direct mode off, each step/substep gate
@@ -125,6 +125,78 @@ plays notes in the order received, including repeated pitches. Internal steps
 and external ticks use the same ordering.
 MIDI input is consumed on the render thread to avoid concurrent sequence edits.
 
+## Drum machine (part of program 0)
+
+`WiSequencer` owns the sample player (the class retains its
+`WiAudioDrivenDrumMachine` name). The drums run without an incoming tone.
+Internal sixteenth-note steps or every sixth external MIDI clock pulse drive
+six accented **one-bar 4/4 patterns (16 sixteenths)**: the three original
+lo-fi grooves followed by three related Yamaha-rim variations.
+A complete loop takes two seconds at 120 BPM.
+
+| Button 3 selection | Groove |
+|---|---|
+| 1 · Lo-fi Pocket | Syncopated kick, backbeat and eighth-note hats |
+| 2 · Lo-fi Four | Four-on-the-floor kick and offbeat hats |
+| 3 · Lo-fi Broken | Displaced kicks, snare ghosts and hat pickups |
+| 4 · Rim Pocket | Pocket-style groove with Yamaha rim and a small hat pickup |
+| 5 · Rim Four | Four-on-the-floor, Yamaha rim and a kick pickup |
+| 6 · Rim Broken | Broken-style kick and hat variation with Yamaha rim ghosts |
+
+The note positions and accents are restored from the original lo-fi half of
+the former lo-fi/Yamaha bank for patterns 1–3. Patterns 4–6 keep a similar
+backbone with modest kick/hat changes and replace only the snare with Yamaha rim.
+They use the seven `use_`-prefixed samples in `minimal_lofi_sounds/`:
+Vintage Kick, Mid Tom, Snare, Mid Conga, Vintage Claves, Perc Stab and Closed
+Hats. One additional WAV, `Yamaha_Electone_HS5/use_HS5 - SnareDrum Rim.wav`,
+is loaded for the added variations. All eight WAVs load once during setup;
+changing patterns performs no file I/O.
+
+Keep `minimal_lofi_sounds/` and the selected rim WAV in `Yamaha_Electone_HS5/`
+in the project when copying it to Bela. The loader
+accepts mono/stereo PCM 16/24/32-bit and float32 WAV, with interpolation at
+playback when the file and device rates differ. Missing/invalid selected WAVs
+fail setup with the filename and reason. The simulator shows the voice labels and the single bar.
+
+| Pot (zero-based) | Function in sequencer program |
+|---|---|
+| 0 | Existing internal tempo; overridden by external MIDI clock |
+| 1 | Existing MIDI/CV sequence pattern/substeps |
+| 2 | Existing MIDI/CV sequence variation |
+| 3 | Existing outgoing MIDI note length |
+| 4 | Drum volume |
+| 5 | Drum filter: kick only to the full kit |
+| 6–7 | Unused in this program |
+
+The filter is a brightness control over **which samples are heard**, rather
+than a low-pass filter on each WAV. Kick remains at full programmed intensity.
+Voices run from kick and tom through snare/rim, conga, claves and percussion stab,
+with closed hats last. Opening pot 5 progressively fades in
+those voices. Gains use smooth curves with approximately
+20 ms smoothing; closing the filter fades already-playing bright sample tails
+as well. At fully closed, only kick is heard. Fully open admits every voice.
+The programmed accents retain their relative velocities.
+
+Pattern changes take effect for subsequent steps without resetting beat
+position. Old tails keep their original sample while they finish, so switching
+palettes cannot reinterpret sample positions or require disk I/O.
+Each voice has four preallocated overlapping playback slots. Rendering and
+pattern changes allocate no memory; output has headroom and a bounded limiter.
+
+Buttons 0–2 retain program selection, direct MIDI/CV mode and sequence freeze.
+Direct mode pauses and silences drum playback. Freeze applies to the melodic
+sequence, so Button 3 can still change drums. MIDI Start restarts the one-bar loop on
+the next clock, Stop pauses new notes and lets tails finish, Continue resumes,
+and Song Position Pointer seeks modulo 16. Missing external clock holds the
+pattern immediately without falling back to internal tempo.
+
+In the simulator, open the page in **Chrome** and click **Start drums**. This
+enables browser audio, sets approximately 120 BPM, raises drum volume and opens
+the filter. **Close filter · kick only** and **Open filter · full kit** preview
+the two ends. Button 3 updates the pattern name, pattern-specific voice labels and
+16-step display. The optional saw/sine/EQ source is shown only for the resonator;
+it has no effect on these drums. See [simulator/README.md](simulator/README.md).
+
 ## JUNO-inspired synthesizer (program 2)
 
 Connect a class-compliant USB MIDI keyboard to Bela's USB-A host port (or use
@@ -180,8 +252,8 @@ not a circuit-accurate emulation or Roland software. The chorus is a clean
 modulated delay, not a model of the original analog delay circuitry.
 
 Audio input is unused in this program and CV outputs stay zero. The local
-GUI shows the new program and controls, but desktop audio/MIDI transport
-remains disconnected as before; keyboard playback is implemented on Bela.
+simulator supports stereo browser playback, the on-screen MIDI keyboard,
+and an optional Web MIDI input.
 
 ## Resonator (program 1)
 
@@ -246,23 +318,20 @@ pot values, button events, and per-sample audio processing.
 From the repository root:
 
 ```sh
-g++ -std=c++14 -fsyntax-only -Iinclude -I. projects/wi_pepper/render.cpp projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp
-g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/resonator_test.cc projects/wi_pepper/KarplusResonator.cpp -o /tmp/wi-pepper-resonator-test
-/tmp/wi-pepper-resonator-test
-g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/programs_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-programs-test
-/tmp/wi-pepper-programs-test
-g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/midi_output_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-midi-output-test
-/tmp/wi-pepper-midi-output-test
-g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/midi_clock_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-midi-clock-test
-/tmp/wi-pepper-midi-clock-test
-g++ -std=c++14 -O2 -Iprojects/wi_pepper projects/wi_pepper/tests/juno_test.cc projects/wi_pepper/WiPepper.cpp projects/wi_pepper/WiSequencer.cpp projects/wi_pepper/KarplusResonator.cpp projects/wi_pepper/JunoSynth.cpp -o /tmp/wi-pepper-juno-test
-/tmp/wi-pepper-juno-test
+python3 projects/wi_pepper/tests/run_tests.py
 ```
+
+The runner syntax-checks the Bela entry point with C++11, builds all native
+tests with C++14 in a temporary directory, and runs the simulator tests.
+The audio drum regression covers the lo-fi pool, sample playback/resampling
+at four rates, the three original grooves and three Yamaha-rim variations, filter endpoints and monotonic
+opening, palette changes with ringing tails, clock override and transport, song
+positions, program/direct mode, and allocation-free processing.
 
 Tests cover initialization, silence, pluck energy, stereo spread, extreme
 controls, changing note sets, sustain, clearing, and dry routing at four
 sample rates. `.cc` keeps the test out of Bela's recursive `.cpp` build.
-Program tests cover the default selection, switching, MIDI assignment and overlay,
+Program tests cover the default selection, switching, MIDI assignment and drum pattern selection,
 CV clearing, audio routing, and continuous program indication at multiple sample rates.
 MIDI output tests cover direct-mode forwarding, channel and velocity preservation,
 sequence pitches, adjustable note lengths, retriggers, locked patterns and note cleanup

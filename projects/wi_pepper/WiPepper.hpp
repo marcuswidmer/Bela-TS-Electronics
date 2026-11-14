@@ -23,13 +23,16 @@ public:
     void midiRealtime(uint8_t byte);
     void midiSongPosition(unsigned int position);
     bool externalMidiClock() const { return sequencer.externalMidiClock(); }
+    bool loadDrumSamples(const std::string& directory) { return sequencer.loadDrumSamples(directory); }
+    const WiAudioDrivenDrumMachine& drums() const { return sequencer.drums(); }
+    float tempoBpm() const { return 60 / (4 * sequencer.stepPeriod()); }
     unsigned int synthVoices() const { return program_ == PgmJuno ? juno.activeVoices() : 0; }
     void processControls(); // Call at controlSampleRate (Bela analog rate).
     void process(const float* in, float* out);
     bool sequencerLed() const { return program_ == PgmSequencer && sequencerLed_; }
     bool directMidiMode() const { return program_ == PgmSequencer && directMidiMode_; }
     bool sequenceLocked() const { return program_ == PgmSequencer && sequencer.sequenceFrozen(); }
-    bool noteOverlay() const { return program_ == PgmSequencer && !directMidiMode_ && noteOverlay_; }
+    bool rimDrumPattern() const { return program_ == PgmSequencer && sequencer.drums().currentPattern() >= 3; }
     Program program() const { return program_; }
     const std::array<float, 4>& cvOutputs() const { return cvOutputs_; }
 
@@ -51,7 +54,6 @@ private:
     float controlSampleRate_ = 0, speedSmoothed_ = 0;
     int stepCountdown_ = 0, priorityCountdown_ = 0, syncCountdown_ = 0;
     bool directMidiMode_ = false;
-    bool noteOverlay_ = false;
     float directPitch_ = 0;
     int directTriggerCountdown_ = 0;
     bool sequencerButton_ = false;

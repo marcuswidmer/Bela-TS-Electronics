@@ -27,8 +27,7 @@ continuously until the next selection. LEDs 0–2 are reserved for program
 indication; LEDs 3–9 retain the meter, countdown, and voice-count displays.
 A disconnected browser leaves no button held after one second.
 In sequencer mode, Button 2 toggles sequence freeze and LED 4 shows the lock.
-Button 1 toggles direct MIDI mode (LED 3); Button 3 toggles live note overlay
-over the running sequence (LED 5).
+Button 1 toggles direct MIDI mode (LED 3); Button 3 cycles six drum patterns. LED 5 indicates the Yamaha-rim variations (patterns 4–6).
 Pot 3 controls sequencer MIDI note length from 10 ms to one full step.
 
 ## Audio playback and MIDI keyboard
@@ -51,24 +50,90 @@ Each browser tab has its own audio cursor; all tabs still share the instrument
 and controls. Enable audio in one tab to avoid doubled playback. Stalls discard
 old samples rather than accumulating a long backlog.
 
-Audio input and CV remain disconnected, and no microphone or hardware MIDI
-port is opened. `PepperIO.hpp` supplies zero-initialized input frames; the native
-host now exports processed stereo output for browser playback. The sequencer
-has no internal audio source, and the resonator receives silence.
+## Drum machine
+
+Stay in **Sequencer + drums** and click **Start drums**. This enables stereo
+browser audio, sets approximately 120 BPM, raises pot 4 (volume) and opens
+pot 5 (filter). No audio input is required. All seven selected lo-fi samples and the Yamaha rim are
+loaded at startup; missing/invalid selected WAVs produce a clear startup error.
+
+The fourth panel button, **3 / Next pattern**, cycles:
+
+1. Lo-fi Pocket — syncopated kick, backbeat and eighth-note hats
+2. Lo-fi Four — four-on-the-floor kick and offbeat hats
+3. Lo-fi Broken — displaced kicks, snare ghosts and hat pickups
+4. Rim Pocket — pocket groove with rim backbeats and a hat pickup
+5. Rim Four — quarter-note kick, rim backbeats and a kick pickup
+6. Rim Broken — broken kick/hat variation with rim ghosts
+
+These are the original three lo-fi patterns from the former lo-fi/Yamaha
+bank, with their original note positions and accents. Three similar variations
+follow, replacing the snare with Yamaha SnareDrum Rim. Each is one bar of 4/4
+(16 sixteenths). The display shows the moving position and selected pattern.
+Changes preserve beat position, and a held button advances only once.
+
+Pot 5 progressively admits brighter voices. Closed gives kick only; opening
+adds percussion and snare before cymbals and hi-hats. **Close filter · kick only**
+and **Open filter · full kit** preview the endpoints. Voice meters show the
+filter gains, and flashes show triggered notes. Pot 4 controls drum volume;
+pots 6–7 are unused in the sequencer. The existing MIDI/CV controls on pots
+0–3 retain their functions. LED 5 is lit for the rim variations.
+
+The grooves share seven `use_`-prefixed samples in
+`minimal_lofi_sounds/`: kick, tom, snare, conga, claves, percussion stab and
+closed hats. Optional parts have rests; not every pattern plays every sample.
+The three rim variations replace only the snare with
+`Yamaha_Electone_HS5/use_HS5 - SnareDrum Rim.wav`. Both folders are required;
+only these eight WAVs are loaded. The pool is loaded once,
+and ringing tails retain their sample identity across pattern changes.
+Closed filter leaves only the kick.
+
+The saw/sine/EQ test source is now shown only in **KarplusResonator**, where
+it excites audio input. It does not control the drum machine. No microphone
+is opened; CV jacks remain placeholders. Use a standalone browser such as
+Chrome; VS Code's embedded browser may not play audio.
+
+### MIDI clock
+
+The **Test MIDI BPM** control plus Start/Stop/Continue generates 24 PPQN inside
+the native simulator, using the same raw-byte parser and tempo override as
+Bela. Every sixth pulse advances one programmed sixteenth-note drum step.
+Start restarts the bar; Continue resumes; Song Position Pointer seeks within
+the pattern. LED 6 indicates external takeover. Stop freezes new hits and
+allows tails to finish. The external override remains selected until restart;
+the speed pot does not reclaim tempo when clock stops. Missing clock holds
+new hits immediately. The filter changes voice intensity without changing step timing.
+
+To use an actual Ableton MIDI output, open the simulator in a Web MIDI browser
+(for example Chrome on localhost), click **Connect MIDI input**, grant browser
+access, and choose the input port. Route Ableton to that input using your MIDI
+interface or a virtual MIDI port and enable Sync on the corresponding Live
+output. Incoming clock/transport takes over from the test-clock generator.
+Web MIDI also accepts keyboard messages. HTTP/browser scheduling adds jitter;
+this is a functional clock test, not a sample-accurate hardware timing test.
+
+All tabs share pots, pattern selection, clock and optional source controls.
+Browser audio has its own playback buffer. Bela audio input is unused by
+the drum machine; the resonator still accepts external input.
 
 ## Files and verification
 
 - `run.py`: temporary build, native bridge, local HTTP API, simulation clock, bounded stereo stream.
-- `PepperSimulator.cc`: buttons, pots, program routing, LEDs, MIDI notes, stereo rendering, C interface.
-- `PepperIO.hpp`: reserved audio/CV frame interface.
+- `PepperSimulator.cc`: controls, program routing, LEDs, raw MIDI/clock, source input and stereo rendering.
+- `SawInput.hpp`: saw/sine source and smoothed seven-band EQ, upstream of Pepper.
+- `PepperIO.hpp`: audio/CV frame interface.
 - `web/`: self-contained browser panel.
 
 The `.cc` suffix keeps the simulator out of Bela's recursive `.cpp` build.
-The real-device `render.cpp` is unchanged.
+The real-device `render.cpp` loads the same lo-fi sample pool and routes the
+processed stereo signal to Bela's audio outputs.
 
 ```sh
 python3 -m unittest discover -s projects/wi_pepper/simulator -p 'test_*.py' -v
 ```
 
-Tests exercise debounce, held-button behavior, program cycling, four-flash
-startup indication, pot updates, countdown routing, MIDI validation, JUNO stereo output, note release, Panic, and audio stream cursors.
+Tests exercise debounce, held-button behavior, program cycling, steady startup
+indication, pot updates, countdown routing, MIDI validation, JUNO stereo output,
+note release, Panic, audio stream cursors, drum playback, source/EQ sculpting,
+six one-bar pattern selections, selected lo-fi/rim sample loading, filter endpoints, MIDI clock override and
+transport, song positions, and invalid source/clock commands.

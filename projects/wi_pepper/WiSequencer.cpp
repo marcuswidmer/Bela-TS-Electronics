@@ -113,6 +113,7 @@ void WiSequencer::process()
                 samplesPerStep_ = std::max(1, static_cast<int>(std::lround(externalStepPeriod_ * fs_)));
                 stepCountdown_ = samplesPerStep_;
                 currentStep_ = getNextStep();
+                drums_.advanceStep();
                 ledCb_(0.01);
                 stepped = true;
             }
@@ -127,6 +128,7 @@ void WiSequencer::process()
     } else if (midiClock_) {
         if (tickRequested_) {
             currentStep_ = getNextStep();
+            drums_.advanceStep();
             ledCb_(0.01);
             tickRequested_ = false;
         }
@@ -142,6 +144,7 @@ void WiSequencer::process()
         {
             stepCountdown_ = samplesPerStep_;
             currentStep_ = getNextStep();
+            drums_.advanceStep();
             ledCb_(0.01);
             if (resyncRequested_ && midiByteCb_) {
                 midiByteCb_(0xFC);
@@ -177,6 +180,7 @@ void WiSequencer::useExternalMidiClock()
     clocksUntilStep_ = pendingClockTicks_ = 0;
     nextStepPosition_ = 0;
     positionPending_ = true;
+    drums_.seekStep(0);
 }
 
 void WiSequencer::midiRealtime(uint8_t byte, bool playbackEnabled)
@@ -222,6 +226,7 @@ void WiSequencer::midiSongPosition(unsigned int position)
     useExternalMidiClock();
     // Song Position Pointer counts sixteenths, the same units as our steps.
     nextStepPosition_ = position;
+    drums_.seekStep(position);
     positionPending_ = true;
     pendingClockTicks_ = clocksUntilStep_ = 0;
     stepCountdown_ = 0;
@@ -231,6 +236,13 @@ void WiSequencer::pauseMidiClockPlayback()
 {
     pendingClockTicks_ = 0;
     if(externalMidiClock_) stepCountdown_ = 0;
+}
+
+void WiSequencer::processAudio(float input, float& left, float& right)
+{
+    // The filter pot controls voice intensity; audio input is unused here.
+    // Only the sequencer clock advances the drum pattern.
+    drums_.process(input, left, right);
 }
 
 void WiSequencer::setSubstepBehaviour(float val)
