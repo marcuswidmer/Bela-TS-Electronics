@@ -60,7 +60,6 @@ void WiPepper::pressButton(unsigned int button)
         sequencerLed_ = false;
         sequencer.setButton(false);
         sequencer.pauseMidiClockPlayback();
-        sequencer.midiClock_ = false;
     } else if(program_ == PgmSequencer) {
         if(button == 1) {
             sequencer.silenceDrums();

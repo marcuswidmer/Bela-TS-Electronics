@@ -1,7 +1,7 @@
 'use strict';
 
 const programs = [
-  { name: 'Sequencer + drums', description: 'Three original lo-fi grooves plus three Yamaha-rim variations, each one bar. Turn Filter to move from kick only to the full kit. The fourth button cycles patterns.',
+  { name: 'Sequencer + drums', description: 'Six lo-fi/rim grooves in 4/4 and a real-kit groove in 6/8. Turn Filter to bring in the percussion. The fourth button cycles all seven patterns.',
     pots: ['Speed', 'Pattern', 'Variation', 'MIDI note length', 'Drum volume', 'Filter', 'Unused', 'Unused'],
     buttons: ['Next program', 'Direct MIDI', 'Freeze sequence', 'Next pattern'],
     led: 'LED 3 · direct MIDI / LED 4 · sequence locked / LED 5 · Yamaha rim / LED 6 · MIDI clock / LED 9 · step & priority countdown' },
@@ -386,6 +386,8 @@ const voiceMeters = [];
 function updateDrums(state) {
   drumState = state.drums;
   document.querySelector('#drum-pattern-name').textContent = `${state.drums.patternIndex+1} / ${state.drums.patterns.length} · ${state.drums.name}`;
+  document.querySelector('#drum-pattern-meter').textContent = `${state.drums.stepCount} sixteenths · one bar of ${state.drums.timeSignature}`;
+  document.querySelector('#kick-only').textContent = `Close filter · ${state.drums.kit === 'Real kit' ? 'tambourine' : 'kick'} only`;
   document.querySelector('#drum-status').textContent = `${state.drums.loaded}/${state.drums.sampleCount} samples · ${state.drums.kit} · filter ${Math.round(state.drums.filter*100)}% · ${state.drums.step < 0 ? 'waiting for step' : `step ${state.drums.step+1}/${state.drums.stepCount}`}`;
   document.querySelector('#clock-status').textContent = `${state.drums.external ? 'MIDI clock override' : 'Internal tempo'} · ${state.drums.bpm.toFixed(1)} BPM${state.clock.running ? ' · test clock running' : ''}`;
   if (performance.now() - sourceEditedAt > 500) {
@@ -408,6 +410,7 @@ function updateDrums(state) {
     }
   }
   voiceMeters.forEach((c,i) => {
+    c.label.parentElement.style.display=state.drums.voices[i] ? '' : 'none';
     c.label.textContent=state.drums.voices[i]; c.meter.value=state.drums.intensities[i];
     c.meter.setAttribute('aria-label', `${state.drums.voices[i]} filter level`);
     if (c.hits !== state.drums.triggers[i]) {
@@ -419,25 +422,24 @@ function updateDrums(state) {
     shownPattern=state.drums.patternIndex; patternRows.length=0;
     document.querySelector('#drum-pattern').replaceChildren();
     state.drums.pattern.forEach(() => patternRows.push([]));
-    for (let bar=0; bar<state.drums.stepCount/16; bar++) {
-      const heading=document.createElement('div'); heading.className='pattern-bar-label';
-      heading.textContent=`BAR ${bar+1}`;
-      document.querySelector('#drum-pattern').append(heading);
-      state.drums.pattern.forEach((notes, voice) => {
+    const heading=document.createElement('div'); heading.className='pattern-bar-label';
+    heading.textContent=`BAR 1 · ${state.drums.timeSignature}`;
+    document.querySelector('#drum-pattern').append(heading);
+    state.drums.pattern.forEach((notes, voice) => {
+        if (!state.drums.voices[voice]) return;
         const row=document.createElement('div'); row.className='pattern-row';
+        row.style.gridTemplateColumns=`70px repeat(${state.drums.stepCount},minmax(0,1fr))`;
         const label=document.createElement('span'); label.textContent=state.drums.voices[voice]; row.append(label);
-        notes.slice(bar*16,bar*16+16).forEach((accent,offset) => {
-          const step=bar*16+offset;
+        notes.forEach((accent,step) => {
           const cell=document.createElement('i'); cell.className='pattern-step';
           cell.classList.toggle('note',accent>0); cell.style.setProperty('--accent',accent);
-          cell.title=`${state.drums.voices[voice]} · bar ${bar+1}, step ${offset+1}${accent ? ` · ${Math.round(accent*100)}% accent` : ' · rest'}`;
+          cell.title=`${state.drums.voices[voice]} · step ${step+1}${accent ? ` · ${Math.round(accent*100)}% accent` : ' · rest'}`;
           row.append(cell); patternRows[voice].push(cell);
         });
         row.setAttribute('role','img');
-        row.setAttribute('aria-label',`${state.drums.voices[voice]}, bar ${bar+1}, hits on steps ${notes.slice(bar*16,bar*16+16).flatMap((x,i)=>x?[i+1]:[]).join(', ')}`);
+        row.setAttribute('aria-label',`${state.drums.voices[voice]}, ${state.drums.timeSignature}, hits on steps ${notes.flatMap((x,i)=>x?[i+1]:[]).join(', ')}`);
         document.querySelector('#drum-pattern').append(row);
-      });
-    }
+    });
   }
   patternRows.forEach((cells,voice)=>cells.forEach((cell,step)=>{
     cell.classList.toggle('current',step===state.drums.step);

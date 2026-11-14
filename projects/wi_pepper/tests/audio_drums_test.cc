@@ -8,7 +8,7 @@
 #include <iostream>
 #include <new>
 namespace { bool watch = false; size_t allocations = 0;
-constexpr unsigned int expected[6][7] = {{4,2,2,2,2,2,8},{4,2,2,2,2,2,4},{5,2,4,3,2,2,10},{4,2,2,2,2,2,9},{5,2,2,2,2,2,5},{5,2,4,3,2,2,9}}; }
+constexpr unsigned int expected[7][7] = {{4,2,2,2,2,2,8},{4,2,2,2,2,2,4},{5,2,4,3,2,2,10},{4,2,2,2,2,2,9},{5,2,2,2,2,2,5},{5,2,4,3,2,2,9},{1,1,1,0,5,0,3}}; }
 void* operator new(size_t size) { if(watch) ++allocations; if(void* p=std::malloc(size)) return p; throw std::bad_alloc(); }
 void* operator new[](size_t size) { return ::operator new(size); }
 void operator delete(void* p) noexcept { std::free(p); }
@@ -19,20 +19,38 @@ int main(int argc,char** argv) {
     assert(argc==2);
     static_assert(WiAudioDrivenDrumMachine::StepCount==16, "Original one-bar patterns");
     std::array<bool,WiAudioDrivenDrumMachine::SampleCount> used{};
-    for(unsigned int pattern=0;pattern<6;++pattern) {
-        assert(std::strstr(WiAudioDrivenDrumMachine::sampleFilename(WiAudioDrivenDrumMachine::patternSample(0,pattern)),"Kick"));
+    for(unsigned int pattern=0;pattern<WiAudioDrivenDrumMachine::PatternCount;++pattern) {
+        if(pattern<6) assert(std::strstr(WiAudioDrivenDrumMachine::sampleFilename(WiAudioDrivenDrumMachine::patternSample(0,pattern)),"Kick"));
+        assert(WiAudioDrivenDrumMachine::patternStepCount(pattern)==(pattern==6 ? 12 : 16));
         for(unsigned int v=0;v<7;++v) {
-            const auto sample=WiAudioDrivenDrumMachine::patternSample(v,pattern);
-            assert(sample<used.size()); used[sample]=true;
+            for(unsigned int step=0;step<WiAudioDrivenDrumMachine::patternStepCount(pattern);++step) {
+                if(!WiAudioDrivenDrumMachine::patternVelocity(v,step,pattern)) continue;
+                for(unsigned int variation=0;variation<(pattern==6 ? 6u : 1u);++variation) {
+                    const auto sample=WiAudioDrivenDrumMachine::patternSample(v,pattern,step,variation);
+                    assert(sample<used.size()); used[sample]=true;
+                    if(pattern==6) assert(sample>=8); // Only real-kit WAVs in the 6/8 groove.
+                }
+            }
         }
     }
     for(bool sample : used) assert(sample);
+    assert(WiAudioDrivenDrumMachine::patternStepCount(7)==0);
+    assert(WiAudioDrivenDrumMachine::patternVelocity(0,8,6)==1);
+    assert(WiAudioDrivenDrumMachine::patternVelocity(1,8,6)>0);
+    assert(WiAudioDrivenDrumMachine::patternVelocity(0,12,6)==0);
+    for(unsigned int step=0;step<12;++step) {
+        for(unsigned int voice=0;voice<7;++voice) {
+            const bool expectedHit = (voice==2 && step==0) || (voice==6 && step%4==0) ||
+                (step==8 ? (voice==0 || voice==1) : step%2==0 && voice==4);
+            assert((WiAudioDrivenDrumMachine::patternVelocity(voice,step,6)>0)==expectedHit);
+        }
+    }
     assert(WiAudioDrivenDrumMachine::patternSample(7,0)==WiAudioDrivenDrumMachine::SampleCount);
     for(float rate : {22050.f,44100.f,48000.f,96000.f}) {
         WiAudioDrivenDrumMachine drums;
         assert(drums.setup(rate) && drums.loadSamples(argv[1]));
-        assert(drums.loadedSamples()==8);
-        assert(!drums.loadSamples("/nonexistent/drum-kits") && drums.loadedSamples()==8);
+        assert(drums.loadedSamples()==WiAudioDrivenDrumMachine::SampleCount);
+        assert(!drums.loadSamples("/nonexistent/drum-kits") && drums.loadedSamples()==WiAudioDrivenDrumMachine::SampleCount);
         float l,r;
         auto render=[&](unsigned int frames,float input=0) {
             float peak=0;
@@ -44,25 +62,41 @@ int main(int argc,char** argv) {
             return peak;
         };
         watch=true;
-        for(unsigned int pattern=0;pattern<6;++pattern) {
+        for(unsigned int pattern=0;pattern<WiAudioDrivenDrumMachine::PatternCount;++pattern) {
             for(float filter : {0.f,1.f}) {
-                assert(drums.selectPattern(pattern)); assert(drums.currentKit()==0);
+                assert(drums.selectPattern(pattern)); assert(drums.currentKit()==(pattern==6 ? 1 : 0));
                 drums.setControls(.8f,filter); render(rate/4); drums.silence(); drums.seekStep(0);
                 auto before=drums.triggerCounts(); float peak=0;
-                for(unsigned int step=0;step<16;++step) {
+                for(unsigned int step=0;step<WiAudioDrivenDrumMachine::patternStepCount(pattern);++step) {
                     drums.advanceStep(); assert(drums.currentStep()==int(step));
                     peak=std::max(peak,render(std::lround(rate*.125)));
                 }
                 assert(peak>.001f); // Actual samples play with silent input for every palette.
                 for(unsigned int v=0;v<7;++v) {
-                    assert(drums.triggerCounts()[v]-before[v] == (v==0 || filter>0 ? expected[pattern][v] : 0));
-                    if(filter==0 && v) assert(drums.intensities()[v]==0);
-                    if(filter==1) assert(drums.intensities()[v]>.999f);
+                    const bool baseVoice = pattern==6 ? (v==1 || v==4) : v==0;
+                    assert(drums.triggerCounts()[v]-before[v] == (baseVoice || filter>0 ? expected[pattern][v] : 0));
+                    if(filter==0 && !baseVoice) assert(drums.intensities()[v]==0);
+                    if(filter==1 && (pattern!=6 || (v!=3 && v!=5))) assert(drums.intensities()[v]>.999f);
                 }
                 auto count=drums.triggerCounts(); render(rate*4);
                 assert(drums.triggerCounts()==count && l==0 && r==0); // No step calls: no new hits.
             }
         }
+        // The real-kit fader adds triangle, kick, then snare while tambourine stays present.
+        drums.selectPattern(6);
+        for(float opening : {0.f,.25f,.5f,.75f,1.f}) {
+            drums.setControls(.8f,opening); render(rate/4);
+            const auto& gains=drums.intensities();
+            assert(gains[1]==1 && gains[4]==1);
+            assert(gains[3]==0 && gains[5]==0);
+            assert(gains[6]>=gains[2] && gains[2]>=gains[0]);
+            if(opening==0) assert(gains[6]==0 && gains[2]==0 && gains[0]==0);
+            if(opening==.25f) assert(gains[6]>0 && gains[6]<1 && gains[2]==0 && gains[0]==0);
+            if(opening==.5f) assert(gains[6]==1 && gains[2]>0 && gains[2]<1 && gains[0]==0);
+            if(opening==.75f) assert(gains[6]==1 && gains[2]==1 && gains[0]>0 && gains[0]<1);
+            if(opening==1) assert(gains[6]==1 && gains[2]==1 && gains[0]==1);
+        }
+        drums.selectPattern(0);
         std::array<float,7> previous{};
         for(float opening : {0.f,.25f,.5f,.75f,1.f}) {
             drums.setControls(.8f,opening); render(rate/4);
@@ -73,9 +107,15 @@ int main(int argc,char** argv) {
         }
         drums.selectPattern(0); drums.seekStep(5); drums.advanceStep();
         const int position=drums.currentStep();
-        for(unsigned int i=1;i<=6;++i) { drums.nextPattern(); assert(drums.currentPattern()==i%6); assert(drums.currentStep()==position); }
+        for(unsigned int i=1;i<=7;++i) { drums.nextPattern(); assert(drums.currentPattern()==i%7); assert(drums.currentStep()==position); }
         drums.advanceStep(); assert(drums.currentStep()==6);
-        assert(!drums.selectPattern(6));
+        assert(!drums.selectPattern(7));
+        drums.seekStep(14); drums.advanceStep();
+        drums.selectPattern(6); assert(drums.currentStep()==2);
+        drums.advanceStep(); assert(drums.currentStep()==3);
+        drums.seekStep(23); drums.advanceStep(); assert(drums.currentStep()==11);
+        drums.advanceStep(); assert(drums.currentStep()==0); // Exactly twelve sixteenths per 6/8 bar.
+        drums.selectPattern(0);
         drums.setControls(.8f,0); render(rate/4); drums.silence(); drums.seekStep(0);
         drums.advanceStep(); render(rate/20); drums.selectPattern(2);
         assert(render(rate/10)>.00001f); // Lo-fi tail keeps its original sample across the switch.
@@ -86,7 +126,7 @@ int main(int argc,char** argv) {
         watch=true;
         reference.setControls(.8f,1); changed.setControls(.8f,1);
         reference.seekStep(4); changed.seekStep(4);
-        reference.advanceStep(); changed.advanceStep(); changed.selectPattern(3);
+        reference.advanceStep(); changed.advanceStep(); changed.selectPattern(6);
         for(unsigned int n=0;n<rate/4;++n) {
             float a,b,c,d; reference.process(0,a,b); changed.process(0,c,d);
             assert(a==c && b==d);
@@ -124,7 +164,17 @@ int main(int argc,char** argv) {
     render(2,1225); assert(pepper.drums().currentStep()==14);
     pepper.pressButton(2); pepper.pressButton(3); assert(pepper.drums().currentPattern()==2 && pepper.sequenceLocked());
     pepper.pressButton(3); assert(pepper.drums().currentPattern()==3 && pepper.rimDrumPattern());
+    for(int i=0;i<3;++i) pepper.pressButton(3);
+    assert(pepper.drums().currentPattern()==6 && !pepper.rimDrumPattern());
+    for(uint8_t byte : {0xf2,23,0}) input.process(byte,pepper);
+    render(2,1225); assert(pepper.drums().currentStep()==11);
+    input.process(0xfa,pepper);
+    count=pepper.drums().triggerCounts();
+    render(88200,1225); // One 6/8 bar at 90 quarter-note BPM: 72 clock pulses in two seconds.
+    assert(pepper.drums().currentStep()==11);
+    for(unsigned int v=0;v<7;++v) assert(pepper.drums().triggerCounts()[v]-count[v]==expected[6][v]);
+    render(2,1225); assert(pepper.drums().currentStep()==0);
     pepper.pressButton(0); count=pepper.drums().triggerCounts(); render(44100,1225);
     assert(pepper.drums().triggerCounts()==count);
-    puts("Six one-bar grooves including Yamaha rim, lo-fi palettes, filter sweep, silent-input audio, transport and allocation tests passed");
+    puts("Seven grooves including 6/8 real kit, all tambourines, filter sweep, audio, transport and allocation tests passed");
 }

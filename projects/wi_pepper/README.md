@@ -44,7 +44,7 @@ variation changes are blocked. Speed, assigned-sequence substep division and
 probability, and MIDI note length remain adjustable. The lock
 applies immediately and survives direct mode and program changes; setup starts
 unlocked. Press again to unlock. Direct MIDI-to-CV notes still work while locked.
-The fourth button (index 3, rightmost) cycles six one-bar drum grooves, then returns
+The fourth button (index 3, rightmost) cycles seven one-bar drum grooves, then returns
 to the first. LED 5 is lit for the Yamaha-rim variations (patterns 4–6). Selection works while sequence freeze or
 direct MIDI mode is active, preserves the drum beat position, and remains
 selected across program changes. Setup starts at pattern 1. This replaces
@@ -67,8 +67,10 @@ receive its notes. Output is not sent to the USB-A host port. This mapping follo
 [Bela's MIDI example](https://docs.bela.io/Communication_2MIDI_2render_8cpp-example.html);
 `amidi -l` on Bela shows the actual device addresses.
 With direct mode off, positive-velocity Note On messages
-assign notes with an offset of 39. Note 0 ticks the sequencer externally while
-not synchronized to MIDI Clock. Output Clock is six pulses per internal step.
+assign all MIDI pitches (0–127) with an offset of 39. Note 0 is a normal
+sequence note and never advances the clock. CV pitch remains clamped to 0–1,
+so notes 0–39 produce 0 V while retaining their pitch on MIDI output and their
+normal sequence steps and gates. Output Clock is six pulses per internal step.
 With direct mode off, each step/substep gate
 sends a Note On on MIDI channel 1 at velocity 100, using the sequence pitch
 plus 39 (clamped to 0–127), followed by Note Off after the duration set by pot 3.
@@ -122,7 +124,7 @@ Note assignment preserves the running step countdown and MIDI Clock phase;
 new MIDI output notes start on the existing step/substep schedule.
 Each replacement begins with the first assigned note on its next step, then
 plays notes in the order received, including repeated pitches. Internal steps
-and external ticks use the same ordering.
+and external MIDI Clock use the same ordering.
 MIDI input is consumed on the render thread to avoid concurrent sequence edits.
 
 ## Drum machine (part of program 0)
@@ -130,9 +132,10 @@ MIDI input is consumed on the render thread to avoid concurrent sequence edits.
 `WiSequencer` owns the sample player (the class retains its
 `WiAudioDrivenDrumMachine` name). The drums run without an incoming tone.
 Internal sixteenth-note steps or every sixth external MIDI clock pulse drive
-six accented **one-bar 4/4 patterns (16 sixteenths)**: the three original
-lo-fi grooves followed by three related Yamaha-rim variations.
-A complete loop takes two seconds at 120 BPM.
+seven accented patterns: three original lo-fi grooves, three Yamaha-rim
+variations, and a real-kit groove in 6/8. Patterns 1–6 are **one bar of 4/4
+(16 sixteenths)**; pattern 7 is **one bar of 6/8 (12 sixteenths)**.
+At 120 quarter-note BPM, their loops take two seconds and 1.5 seconds respectively.
 
 | Button 3 selection | Groove |
 |---|---|
@@ -142,6 +145,7 @@ A complete loop takes two seconds at 120 BPM.
 | 4 · Rim Pocket | Pocket-style groove with Yamaha rim and a small hat pickup |
 | 5 · Rim Four | Four-on-the-floor, Yamaha rim and a kick pickup |
 | 6 · Rim Broken | Broken-style kick and hat variation with Yamaha rim ghosts |
+| 7 · Real Kit 6/8 | Kick on 1; snare and tambourine hit on 5; shakes on 1, 2, 3, 4 and 6; triangle on 1, 3 and 5 |
 
 The note positions and accents are restored from the original lo-fi half of
 the former lo-fi/Yamaha bank for patterns 1–3. Patterns 4–6 keep a similar
@@ -149,10 +153,21 @@ backbone with modest kick/hat changes and replace only the snare with Yamaha rim
 They use the seven `use_`-prefixed samples in `minimal_lofi_sounds/`:
 Vintage Kick, Mid Tom, Snare, Mid Conga, Vintage Claves, Perc Stab and Closed
 Hats. One additional WAV, `Yamaha_Electone_HS5/use_HS5 - SnareDrum Rim.wav`,
-is loaded for the added variations. All eight WAVs load once during setup;
-changing patterns performs no file I/O.
+is loaded for the rim variations. Pattern 7 uses all twelve WAVs in `real_kit/`:
+`snare.wav`, `EAR_CANDY_tamourine_hit_var_1.wav` through `_3.wav`, and
+`EAR_CANDY_tamourine_shake_var_1.wav` through `_6.wav`, and
+`EAR_CANDY_light_triangle.wav` and `kick_marius.wav`.
+All 20 WAVs load once during setup; changing patterns performs no file I/O.
 
-Keep `minimal_lofi_sounds/` and the selected rim WAV in `Yamaha_Electone_HS5/`
+Count six eighth notes in pattern 7: snare and tambourine hit play together
+on 5, while 1, 2, 3, 4 and 6 each play one tambourine shake. Triangle also
+plays on 1, 3 and 5, and `kick_marius.wav` plays on 1. Intervening
+sixteenths are rests. Hit takes cycle through all three variations, and the
+five shakes per bar cycle continuously through all six shake variations.
+The combined sample variation cycle repeats after six bars. MIDI Start resets the cycle;
+Song Position Pointer selects the corresponding bar and variation.
+
+Keep `minimal_lofi_sounds/`, `real_kit/` and the selected rim WAV in `Yamaha_Electone_HS5/`
 in the project when copying it to Bela. The loader
 accepts mono/stereo PCM 16/24/32-bit and float32 WAV, with interpolation at
 playback when the file and device rates differ. Missing/invalid selected WAVs
@@ -165,20 +180,23 @@ fail setup with the filename and reason. The simulator shows the voice labels an
 | 2 | Existing MIDI/CV sequence variation |
 | 3 | Existing outgoing MIDI note length |
 | 4 | Drum volume |
-| 5 | Drum filter: kick only to the full kit |
+| 5 | Drum filter: kick only to full kit in patterns 1–6; tambourine → triangle → kick → snare in pattern 7 |
 | 6–7 | Unused in this program |
 
 The filter is a brightness control over **which samples are heard**, rather
-than a low-pass filter on each WAV. Kick remains at full programmed intensity.
+than a low-pass filter on each WAV. In patterns 1–6, kick remains at full programmed intensity.
 Voices run from kick and tom through snare/rim, conga, claves and percussion stab,
 with closed hats last. Opening pot 5 progressively fades in
 those voices. Gains use smooth curves with approximately
 20 ms smoothing; closing the filter fades already-playing bright sample tails
 as well. At fully closed, only kick is heard. Fully open admits every voice.
-The programmed accents retain their relative velocities.
+The programmed accents retain their relative velocities. In pattern 7, tambourine hits
+and shakes stay at full programmed intensity throughout the fader's range.
+Triangle fades in first (about 4–32%), kick next (36–64%), and snare last
+(68–96%). At minimum, only tambourine is heard; at maximum, the full kit plays.
 
 Pattern changes take effect for subsequent steps without resetting beat
-position. Old tails keep their original sample while they finish, so switching
+position modulo the new bar length. Old tails keep their original sample while they finish, so switching
 palettes cannot reinterpret sample positions or require disk I/O.
 Each voice has four preallocated overlapping playback slots. Rendering and
 pattern changes allocate no memory; output has headroom and a bounded limiter.
@@ -187,14 +205,15 @@ Buttons 0–2 retain program selection, direct MIDI/CV mode and sequence freeze.
 Direct mode pauses and silences drum playback. Freeze applies to the melodic
 sequence, so Button 3 can still change drums. MIDI Start restarts the one-bar loop on
 the next clock, Stop pauses new notes and lets tails finish, Continue resumes,
-and Song Position Pointer seeks modulo 16. Missing external clock holds the
+and Song Position Pointer seeks modulo the selected bar length (16 or 12 steps). Missing external clock holds the
 pattern immediately without falling back to internal tempo.
 
 In the simulator, open the page in **Chrome** and click **Start drums**. This
 enables browser audio, sets approximately 120 BPM, raises drum volume and opens
-the filter. **Close filter · kick only** and **Open filter · full kit** preview
-the two ends. Button 3 updates the pattern name, pattern-specific voice labels and
-16-step display. The optional saw/sine/EQ source is shown only for the resonator;
+the filter. **Close filter** and **Open filter · full kit** preview
+the two ends: the closed-filter button selects kick only in patterns 1–6 and
+tambourine only in pattern 7. Button 3 updates the pattern name, voice labels and
+bar length (16 or 12 steps). The optional saw/sine/EQ source is shown only for the resonator;
 it has no effect on these drums. See [simulator/README.md](simulator/README.md).
 
 ## JUNO-inspired synthesizer (program 2)
@@ -338,12 +357,13 @@ sequence pitches, adjustable note lengths, retriggers, locked patterns and note 
 at multiple control sample rates.
 They also compare CV gates and outgoing MIDI Clock against an unedited sequence
 while notes are assigned between steps and at step boundaries.
-Assignment-order tests cover internal steps, external ticks, repeated pitches,
+Assignment-order tests cover internal steps, external MIDI Clock, repeated pitches,
 and appending notes while a sequence is playing.
 MIDI clock/input tests cover six-pulse step division, changing external tempos,
 speed-pot independence, Start/Stop/Continue, song positions, queued clocks,
 mode changes, note releases, running status, and interleaved realtime bytes
-at multiple control sample rates.
+at multiple control sample rates. They verify all 128 MIDI pitches, low-note
+CV clamping and gates, and that note 0 never advances playback.
 Synth tests cover pitch/bend, polyphony and sustain, clearing, release, chorus, extreme
 controls, program routing, and allocation-free processing at four sample rates.
 The keyboard test covers immediate note onset, channel-specific release,

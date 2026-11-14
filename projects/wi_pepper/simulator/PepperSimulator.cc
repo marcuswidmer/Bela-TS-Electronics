@@ -101,6 +101,7 @@ const char* pepper_pattern_name(unsigned int pattern) { return WiAudioDrivenDrum
 const char* pepper_voice_name(unsigned int pattern, unsigned int voice) { return WiAudioDrivenDrumMachine::voiceName(voice,pattern); }
 unsigned int pepper_drum_pattern_count() { return WiAudioDrivenDrumMachine::PatternCount; }
 unsigned int pepper_drum_step_count() { return WiAudioDrivenDrumMachine::StepCount; }
+unsigned int pepper_pattern_step_count(unsigned int pattern) { return WiAudioDrivenDrumMachine::patternStepCount(pattern); }
 unsigned int pepper_drum_sample_count() { return WiAudioDrivenDrumMachine::SampleCount; }
 const char* pepper_sample_error(void* handle) {
     return static_cast<Simulator*>(handle)->pepper.drums().loadError().c_str();

@@ -11,7 +11,9 @@ constexpr float sampleOutputGain = .7f; // Twice the previous .35 gain (+6 dB), 
 // Seven lo-fi voices, ordered from kick/body to bright percussion. The three
 // added variations replace only voice 2 with the Yamaha rim sample.
 constexpr unsigned int rimSample = 7;
+constexpr unsigned int realSnareSample = 8, firstHitSample = 9, firstShakeSample = 12, triangleSample = 18, realKickSample = 19;
 const char* const names[] = {"Kick", "Tom", "Snare", "Conga", "Claves", "Stab", "Hi-hat", "Rim"};
+const char* const realVoiceNames[] = {"Snare", "Tamb hit", "Kick", "", "Shake", "", "Triangle"};
 const char* const files[] = {
     "use_ALF_Vintage_Kit_Kick.wav",
     "use_ALF_Raw_Analog_Kit_Mid_Tom.wav",
@@ -20,12 +22,24 @@ const char* const files[] = {
     "use_ALF_Vintage_Kit_Claves.wav",
     "use_ALF_Raw_Analog_Kit_Perc_Stab.wav",
     "use_ALF_Raw_Analog_Kit_Closed_Hats.wav",
-    "use_HS5 - SnareDrum Rim.wav"
+    "use_HS5 - SnareDrum Rim.wav",
+    "snare.wav",
+    "EAR_CANDY_tamourine_hit_var_1.wav",
+    "EAR_CANDY_tamourine_hit_var_2.wav",
+    "EAR_CANDY_tamourine_hit_var_3.wav",
+    "EAR_CANDY_tamourine_shake_var_1.wav",
+    "EAR_CANDY_tamourine_shake_var_2.wav",
+    "EAR_CANDY_tamourine_shake_var_3.wav",
+    "EAR_CANDY_tamourine_shake_var_4.wav",
+    "EAR_CANDY_tamourine_shake_var_5.wav",
+    "EAR_CANDY_tamourine_shake_var_6.wav",
+    "EAR_CANDY_light_triangle.wav",
+    "kick_marius.wav"
 };
-const char* const patternNames[] = {"Lo-fi Pocket", "Lo-fi Four", "Lo-fi Broken", "Rim Pocket", "Rim Four", "Rim Broken"};
-// Three originals followed by three related rim variations, all one bar.
-// Rows: kick, tom, snare/rim, conga, claves, stab, hi-hat.
-constexpr float patterns[6][7][16] = {
+const char* const patternNames[] = {"Lo-fi Pocket", "Lo-fi Four", "Lo-fi Broken", "Rim Pocket", "Rim Four", "Rim Broken", "Real Kit 6/8"};
+// Three originals, three rim variations, then the 6/8 real-kit groove, all one bar.
+// First six patterns: kick, tom, snare/rim, conga, claves, stab, hi-hat.
+constexpr float patterns[WiAudioDrivenDrumMachine::PatternCount][7][16] = {
   {
     {1,0,0,0, 0,0,.65f,0, .9f,0,0,0, 0,0,.55f,0},
     {0,0,0,0, 0,0,0,0, 0,0,.55f,0, 0,0,0,.45f},
@@ -74,6 +88,14 @@ constexpr float patterns[6][7][16] = {
     {0, 0, 0, 0, 0, 0.45f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.55f},
     {0, 0, 0, 0, 0, 0, 0.35f, 0, 0, 0, 0, 0, 0, 0, 0.6f, 0},
     {0.75f, 0, 0.35f, 0, 0.65f, 0, 0.35f, 0, 0.8f, 0, 0.35f, 0, 0.65f, 0, 0.4f, 0.22f},
+  }, { // Real Kit 6/8: six eighth notes, twelve sixteenths.
+    {0,0,0,0, 0,0,0,0, 1,0,0,0}, // Eighth note 5: snare and tambourine hit.
+    {0,0,0,0, 0,0,0,0, .95f,0,0,0},
+    {1,0,0,0, 0,0,0,0, 0,0,0,0}, // Kick on eighth note 1.
+    {},
+    {.65f,0,.55f,0, .6f,0,.65f,0, 0,0,.7f,0}, // Shakes on eighth notes 1, 2, 3, 4 and 6.
+    {},
+    {.65f,0,0,0, .65f,0,0,0, .65f,0,0,0}, // Triangle on eighth notes 1, 3 and 5.
   }
 };
 float unit(float x) { return std::isfinite(x) ? std::max(0.0f, std::min(1.0f, x)) : 0; }
@@ -81,18 +103,33 @@ uint16_t u16(const unsigned char* p) { return p[0] | uint16_t(p[1]) << 8; }
 uint32_t u32(const unsigned char* p) { return u16(p) | uint32_t(u16(p + 2)) << 16; }
 }
 float WiAudioDrivenDrumMachine::bandFrequency(unsigned int voice) { return voice < VoiceCount ? centers[voice] : 0; }
-unsigned int WiAudioDrivenDrumMachine::patternSample(unsigned int voice, unsigned int pattern) {
+unsigned int WiAudioDrivenDrumMachine::patternSample(unsigned int voice, unsigned int pattern, unsigned int step, unsigned int variation) {
     if(pattern >= PatternCount || voice >= VoiceCount) return SampleCount;
+    if(pattern == RealKitPattern) {
+        if(voice == 0) return realSnareSample;
+        if(voice == 1) return firstHitSample + variation % 3;
+        if(voice == 2) return realKickSample;
+        if(voice == 4) {
+            const auto shake = step / 2 - (step >= 8 ? 1 : 0);
+            return firstShakeSample + (5 * (variation % 6) + shake) % 6;
+        }
+        if(voice == 6) return triangleSample;
+        return SampleCount;
+    }
     return voice == 2 && pattern >= 3 ? rimSample : voice;
 }
+unsigned int WiAudioDrivenDrumMachine::patternStepCount(unsigned int pattern) {
+    return pattern < PatternCount ? (pattern == RealKitPattern ? 12 : StepCount) : 0;
+}
 const char* WiAudioDrivenDrumMachine::voiceName(unsigned int voice, unsigned int pattern) {
+    if(pattern == RealKitPattern && voice < VoiceCount) return realVoiceNames[voice];
     const auto sample = patternSample(voice, pattern); return sample < SampleCount ? names[sample] : "";
 }
 const char* WiAudioDrivenDrumMachine::sampleFilename(unsigned int sample) { return sample < SampleCount ? files[sample] : ""; }
-const char* WiAudioDrivenDrumMachine::kitName(unsigned int kit) { return kit < KitCount ? "Lo-fi" : ""; }
+const char* WiAudioDrivenDrumMachine::kitName(unsigned int kit) { return kit < KitCount ? (kit == 1 ? "Real kit" : "Lo-fi") : ""; }
 const char* WiAudioDrivenDrumMachine::patternName(unsigned int pattern) { return pattern < PatternCount ? patternNames[pattern] : ""; }
 float WiAudioDrivenDrumMachine::patternVelocity(unsigned int voice, unsigned int step, unsigned int pattern) {
-    return voice < VoiceCount && step < StepCount && pattern < PatternCount ? patterns[pattern][voice][step] : 0;
+    return voice < VoiceCount && step < patternStepCount(pattern) ? patterns[pattern][voice][step] : 0;
 }
 bool WiAudioDrivenDrumMachine::setup(float sampleRate) {
     if(!std::isfinite(sampleRate) || sampleRate < 22050 || sampleRate > 96000) return false;
@@ -107,6 +144,18 @@ void WiAudioDrivenDrumMachine::setControls(float volume, float filter) {
     if(!controlsInitialized_) { filterSmoothed_ = filterTarget_; controlsInitialized_ = true; updateIntensities(); }
 }
 void WiAudioDrivenDrumMachine::updateIntensities() {
+    if(pattern_ == RealKitPattern) {
+        intensities_ = {};
+        intensities_[1] = intensities_[4] = 1; // Tambourine hit and shakes are always present.
+        const auto fadeIn = [this](float start) {
+            const float x = unit((filterSmoothed_ - start) / .28f);
+            return x*x*(3-2*x);
+        };
+        intensities_[6] = fadeIn(.04f); // Triangle first, then kick, then snare.
+        intensities_[2] = fadeIn(.36f);
+        intensities_[0] = fadeIn(.68f);
+        return;
+    }
     intensities_[0] = 1;
     for(unsigned int i=1; i<VoiceCount; ++i) {
         const float x = unit((filterSmoothed_-(.08f+.16f*(i-1)))/.12f);
@@ -117,19 +166,33 @@ void WiAudioDrivenDrumMachine::silence() {
     for(auto& voice : voices_) { voice.playback = {}; voice.nextPlayback = 0; }
     lastVelocities_ = {};
 }
-void WiAudioDrivenDrumMachine::seekStep(unsigned int position) { nextStep_ = position%StepCount; currentStep_ = -1; lastVelocities_ = {}; }
+void WiAudioDrivenDrumMachine::seekStep(unsigned int position) {
+    const auto steps = patternStepCount(pattern_);
+    nextStep_ = position % steps;
+    nextVariation_ = pattern_ == RealKitPattern ? (position / steps) % 6 : 0;
+    currentStep_ = -1; lastVelocities_ = {};
+}
 bool WiAudioDrivenDrumMachine::selectPattern(unsigned int pattern) {
     if(pattern >= PatternCount) return false;
-    pattern_ = pattern; lastVelocities_ = {}; return true;
+    if(pattern != pattern_) nextVariation_ = 0;
+    pattern_ = pattern;
+    const auto steps = patternStepCount(pattern_);
+    nextStep_ %= steps;
+    if(currentStep_ >= 0) currentStep_ %= steps;
+    updateIntensities();
+    lastVelocities_ = {}; return true;
 }
 void WiAudioDrivenDrumMachine::advanceStep() {
-    currentStep_ = nextStep_; nextStep_ = (nextStep_+1)%StepCount;
+    const auto variation = nextVariation_;
+    currentStep_ = nextStep_; nextStep_ = (nextStep_+1)%patternStepCount(pattern_);
+    // Five shakes per bar cycle through all six takes; hits cycle through three.
+    if(pattern_ == RealKitPattern && nextStep_ == 0) nextVariation_ = (nextVariation_ + 1) % 6;
     for(unsigned int i=0; i<VoiceCount; ++i) {
         const float accent = patterns[pattern_][i][currentStep_];
         lastVelocities_[i] = accent*intensities_[i];
         if(lastVelocities_[i] <= 0) continue;
         ++triggers_[i];
-        const auto sample = patternSample(i,pattern_);
+        const auto sample = patternSample(i,pattern_,currentStep_,variation);
         if(samples_[sample].stereo.empty()) continue;
         auto& voice = voices_[i];
         auto& hit = voice.playback[voice.nextPlayback++%voice.playback.size()];
@@ -142,7 +205,8 @@ unsigned int WiAudioDrivenDrumMachine::loadedSamples() const {
 bool WiAudioDrivenDrumMachine::loadSamples(const std::string& projectDirectory) {
     std::array<Sample,SampleCount> replacement;
     for(unsigned int i=0; i<SampleCount; ++i) {
-        const char* directory = i == rimSample ? "Yamaha_Electone_HS5" : "minimal_lofi_sounds";
+        const char* directory = i >= realSnareSample ? "real_kit" :
+            i == rimSample ? "Yamaha_Electone_HS5" : "minimal_lofi_sounds";
         if(!readWave(projectDirectory+"/"+directory+"/"+files[i], replacement[i], loadError_)) return false;
     }
     samples_ = std::move(replacement); silence(); loadError_.clear(); return true;

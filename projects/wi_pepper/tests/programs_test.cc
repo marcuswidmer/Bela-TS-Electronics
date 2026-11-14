@@ -5,6 +5,14 @@
 #include <iostream>
 #include <vector>
 
+static void advanceToNextStep(WiPepper& pepper)
+{
+    int remaining = 3000; // Longer than the slowest step at the 1 kHz control rate.
+    while(pepper.cvOutputs()[1] != 0 && --remaining > 0) pepper.processControls();
+    do { pepper.processControls(); } while(pepper.cvOutputs()[1] == 0 && --remaining > 0);
+    assert(remaining > 0);
+}
+
 int main()
 {
     WiPepper pepper;
@@ -157,8 +165,8 @@ int main()
     pepper.midiNoteOn(90, 100); // Rejected immediately, before control processing.
     for(int cycle = 0; cycle < 3; ++cycle) {
         for(int note : defaultPattern) {
-            pepper.midiNoteOn(0, 100); // External ticks remain available while locked.
-            pepper.processControls();
+            pepper.midiNoteOn(0, 100); // Note zero is blocked by freeze like any other note.
+            advanceToNextStep(pepper);
             assert(std::abs(pepper.cvOutputs()[0] - note/60.0f) < 1e-6f);
             assert(pepper.cvOutputs()[1] == 1);
         }
@@ -173,9 +181,6 @@ int main()
     pepper.pressButton(2);
     assert(!pepper.sequenceLocked());
     pepper.processControls();
-    pepper.midiNoteOn(0, 100);
-    pepper.processControls();
-    assert(std::abs(pepper.cvOutputs()[0] - 1.0f/60) < 1e-6f);
 
     // Assigned notes are protected too; pot 2 no longer locks assignment.
     pepper.midiNoteOn(60, 100);

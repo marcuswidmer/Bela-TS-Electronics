@@ -169,7 +169,7 @@ class SimulatorTest(unittest.TestCase):
                              "eq": [0] * 7 if eq is None else eq})
 
     def test_drums_play_without_input_and_filter_closes_to_kick(self):
-        self.assertEqual(self.engine.state()["drums"]["loaded"], 8)
+        self.assertEqual(self.engine.state()["drums"]["loaded"], 20)
         self.assertFalse(self.engine.state()["source"]["enabled"])
         self.engine.command({"type": "pot", "index": 0, "value": (8-.4)/14})
         # Allow the existing internal-tempo smoothing to settle, then a full one-bar loop.
@@ -191,20 +191,24 @@ class SimulatorTest(unittest.TestCase):
         self.render(44100)
         self.assertLess(max(map(abs,self.render(4410))),.00001)
 
-    def test_loads_only_selected_lofi_and_yamaha_rim(self):
+    def test_loads_selected_lofi_rim_and_real_kit(self):
         with tempfile.TemporaryDirectory(prefix="lofi-rim-") as folder:
             root=Path(folder)
             project=Path(__file__).resolve().parents[1]
             (root/"minimal_lofi_sounds").symlink_to(project/"minimal_lofi_sounds", target_is_directory=True)
             # Missing rim rejects replacement and preserves the already loaded pool.
             self.assertEqual(self.engine.lib.pepper_load_samples(self.engine.handle,str(root).encode()),0)
-            self.assertEqual(self.engine.state()["drums"]["loaded"],8)
+            self.assertEqual(self.engine.state()["drums"]["loaded"],20)
             yamaha=root/"Yamaha_Electone_HS5"
             yamaha.mkdir()
             filename="use_HS5 - SnareDrum Rim.wav"
             (yamaha/filename).symlink_to(project/"Yamaha_Electone_HS5"/filename)
+            self.assertEqual(self.engine.lib.pepper_load_samples(self.engine.handle,str(root).encode()),0)
+            self.assertIn(b"real_kit/snare.wav", self.engine.lib.pepper_sample_error(self.engine.handle))
+            self.assertEqual(self.engine.state()["drums"]["loaded"],20)
+            (root/"real_kit").symlink_to(project/"real_kit", target_is_directory=True)
             self.assertEqual(self.engine.lib.pepper_load_samples(self.engine.handle,str(root).encode()),1)
-            self.assertEqual(self.engine.state()["drums"]["loaded"],8)
+            self.assertEqual(self.engine.state()["drums"]["loaded"],20)
 
     def test_midi_clock_overrides_pattern_tempo_and_transport(self):
         self.source()
@@ -230,26 +234,63 @@ class SimulatorTest(unittest.TestCase):
         self.render(44100)
         self.assertGreater(self.engine.state()["drums"]["triggers"][0], count[0])
 
-    def test_button_three_cycles_six_lofi_and_rim_grooves(self):
+    def test_button_three_cycles_seven_grooves_with_correct_meters(self):
         self.engine.command({"type":"clock","bpm":120,"transport":"stop"})
         seen=[]
-        for pattern in range(6):
+        for pattern in range(7):
             state=self.engine.state()
             self.assertEqual(state["drums"]["patternIndex"],pattern)
-            self.assertEqual(state["drums"]["kit"],"Lo-fi" if pattern<3 else "Lo-fi + Yamaha rim")
-            self.assertEqual(state["drums"]["stepCount"], 16)
-            self.assertTrue(all(len(row)==16 for row in state["drums"]["pattern"]))
+            self.assertEqual(state["drums"]["kit"],"Lo-fi" if pattern<3 else "Lo-fi + Yamaha rim" if pattern<6 else "Real kit")
+            steps = 12 if pattern==6 else 16
+            self.assertEqual(state["drums"]["stepCount"], steps)
+            self.assertEqual(state["drums"]["timeSignature"], "6/8" if pattern==6 else "4/4")
+            self.assertTrue(all(len(row)==steps for row in state["drums"]["pattern"]))
             seen.append(str(state["drums"]["pattern"]))
             step=state["drums"]["step"]
             self.button(3,True); self.advance(220)
             self.assertEqual(self.engine.state()["drums"]["patternIndex"],pattern)
             self.advance(1); self.advance(44100)
             state=self.engine.state()
-            self.assertEqual(state["drums"]["patternIndex"],(pattern+1)%6)
+            self.assertEqual(state["drums"]["patternIndex"],(pattern+1)%7)
             self.assertEqual(state["drums"]["step"],step)
             self.button(3,False); self.advance(221)
-        self.assertEqual(len(set(seen)),6)
+        self.assertEqual(len(set(seen)),7)
         self.assertEqual(self.engine.state()["drums"]["patternIndex"],0)
+
+    def test_real_kit_six_eight_fifth_eighth_twelve_steps_and_transport(self):
+        self.engine.command({"type":"clock","bpm":120,"transport":"stop"})
+        for _ in range(6):
+            self.button(3,True); self.advance(221)
+            self.button(3,False); self.advance(221)
+        before = self.engine.state()["drums"]["triggers"]
+        self.engine.command({"type":"clock","bpm":120,"transport":"start"})
+        samples = self.render(66150)  # Exactly one bar of 6/8 at 120 quarter-note BPM.
+        state = self.engine.state()
+        self.assertGreater(max(map(abs,samples)), .001)
+        self.assertEqual(state["drums"]["step"],11)
+        self.assertEqual([a-b for a,b in zip(state["drums"]["triggers"],before)],[1,1,1,0,5,0,3])
+        for step in range(12):
+            active = [voice for voice,row in enumerate(state["drums"]["pattern"]) if row[step]>0]
+            expected = [0,1] if step==8 else [4] if step%2==0 else []
+            if step==0: expected.insert(0,2)
+            if step%4==0: expected.append(6)
+            self.assertEqual(active, expected)
+        self.assertFalse(state["leds"][5])  # The real kit is not a Yamaha-rim variation.
+        self.render(2)
+        state = self.engine.state()
+        self.assertEqual(state["drums"]["step"],0)
+        self.assertEqual(state["drums"]["velocities"][:2],[0,0])
+        self.assertGreater(state["drums"]["velocities"][4],0)
+        self.engine.command({"type":"clock","bpm":120,"transport":"stop"})
+        count = self.engine.state()["drums"]["triggers"]
+        self.render(44100)
+        self.assertEqual(self.engine.state()["drums"]["triggers"],count)
+        self.engine.command({"type":"clock","bpm":120,"transport":"continue"})
+        self.render(5513)
+        self.assertEqual(self.engine.state()["drums"]["step"],1)
+        self.engine.command({"type":"midi","bytes":[0xf2,23,0,0xf8]})
+        self.advance(4)
+        self.assertEqual(self.engine.state()["drums"]["step"],11)
 
     def test_clock_plays_one_bar_and_song_position_seeks(self):
         self.source()

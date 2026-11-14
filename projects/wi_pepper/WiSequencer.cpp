@@ -6,7 +6,6 @@
 
 WiSequencer::WiSequencer()
     : substepChance_(0, 100)
-    , tickRequested_()
     , rd_()
     , gen_(rd_())
 {
@@ -20,8 +19,6 @@ void WiSequencer::init(float fs, std::function<void(float)> ledCb, std::function
     firstAssignedStepPending_ = false;
     button_ = prevButton_ = false;
     resyncRequested_ = false;
-    tickRequested_ = false;
-    midiClock_ = false;
     externalMidiClock_ = midiTransportRunning_ = false;
     clockMeasurementValid_ = positionPending_ = false;
     pendingClockTicks_ = clocksUntilStep_ = 0;
@@ -45,7 +42,6 @@ void WiSequencer::init(float fs, std::function<void(float)> ledCb, std::function
     // Initialize timing
     currentStep_ = 0;
     stepCountdown_ = 1;
-    midiStepCountdown_ = 1;
     samplesPerStep_ = 1;
 
     ledCb_ = ledCb;
@@ -125,13 +121,6 @@ void WiSequencer::process()
             produceSubsteps();
             --stepCountdown_;
         }
-    } else if (midiClock_) {
-        if (tickRequested_) {
-            currentStep_ = getNextStep();
-            drums_.advanceStep();
-            ledCb_(0.01);
-            tickRequested_ = false;
-        }
     } else {
         int newSamplesPerStep = (int)lroundf(period_ * fs_);
         if (newSamplesPerStep == 0)
@@ -162,19 +151,11 @@ void WiSequencer::process()
     currentNote_ = notes_[currentStep_].note;
 }
 
-void WiSequencer::tick()
-{
-    if(externalMidiClock_) return;
-    midiClock_ = true;
-    tickRequested_ = true;
-}
-
 void WiSequencer::useExternalMidiClock()
 {
     if(externalMidiClock_) return;
     externalMidiClock_ = true;
     midiTransportRunning_ = true; // Also accept sources sending clock without Start.
-    tickRequested_ = false;
     resyncRequested_ = false;
     stepCountdown_ = 0;
     clocksUntilStep_ = pendingClockTicks_ = 0;
@@ -383,15 +364,8 @@ void WiSequencer::freezeSequenceChanged(bool freezeSequence)
 
 void WiSequencer::assignNote(int note)
 {
-    if (note == -39) { // The note C-2 will be treated as a sequencer tick. Potential bug: If a low note is played in a midi keyboard, midiClock will be true!
-        tick();
-        return;
-    }
-
-    if (note <= 0) { // IDE!!!! Her kan man legge in et "tomt" steg- slik at man kan få pauser i sequenceren
-        return;
-    }
-
+    // Notes are stored relative to MIDI note 39; zero and negative pitches
+    // are valid sequence steps. Clamp only when writing the unipolar CV.
     if (assignMode_ and not freezeSequence_) {
         if (assignCountdown_ == 0)
             startAssignCountdown();

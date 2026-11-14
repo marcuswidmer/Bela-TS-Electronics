@@ -20,7 +20,6 @@ public:
     WiSequencer();
     void process();
     void init(float fs, std::function<void(float)> = nullptr, std::function<void(float)> = nullptr, std::function<void(float)> = nullptr, std::function<void(uint8_t)> = nullptr);
-    void tick();
     void advanceClockTime() { ++clockSamples_; }
     void midiRealtime(uint8_t byte, bool playbackEnabled = true);
     void midiSongPosition(unsigned int position);
@@ -46,7 +45,6 @@ public:
     bool sequenceFrozen() const { return freezeSequence_; }
 
 
-    bool midiClock_ = false;
     int currentNote_ = 0;
     float lfo_ = 0.0f;
 
@@ -54,7 +52,6 @@ private:
     void startAssignCountdown();
     int getNextStep();
     void produceSubsteps();
-    void produceMidiSubsteps();
     void useExternalMidiClock();
 
     bool assignMode_ = true;
@@ -64,7 +61,6 @@ private:
     int currentStep_;
     int samplesPerStep_;
     int stepCountdown_;
-    int midiStepCountdown_;
     int numNotes_;
     int numGroups_;
     int assignCountdown_ = 0;
@@ -91,7 +87,6 @@ private:
     WiAudioDrivenDrumMachine drums_;
     std::uniform_int_distribution<> substepChance_;
     std::vector<int> randomNotes_;
-    std::atomic_bool tickRequested_;
     std::function<void(float)> ledCb_;
     std::function<void(float)> priorityLedCb_;
     std::function<void(float)> syncTriggerCb_;

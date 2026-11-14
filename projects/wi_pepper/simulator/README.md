@@ -27,7 +27,7 @@ continuously until the next selection. LEDs 0–2 are reserved for program
 indication; LEDs 3–9 retain the meter, countdown, and voice-count displays.
 A disconnected browser leaves no button held after one second.
 In sequencer mode, Button 2 toggles sequence freeze and LED 4 shows the lock.
-Button 1 toggles direct MIDI mode (LED 3); Button 3 cycles six drum patterns. LED 5 indicates the Yamaha-rim variations (patterns 4–6).
+Button 1 toggles direct MIDI mode (LED 3); Button 3 cycles seven drum patterns. LED 5 indicates the Yamaha-rim variations (patterns 4–6).
 Pot 3 controls sequencer MIDI note length from 10 ms to one full step.
 
 ## Audio playback and MIDI keyboard
@@ -54,7 +54,7 @@ old samples rather than accumulating a long backlog.
 
 Stay in **Sequencer + drums** and click **Start drums**. This enables stereo
 browser audio, sets approximately 120 BPM, raises pot 4 (volume) and opens
-pot 5 (filter). No audio input is required. All seven selected lo-fi samples and the Yamaha rim are
+pot 5 (filter). No audio input is required. All seven selected lo-fi samples, the Yamaha rim and twelve real-kit samples are
 loaded at startup; missing/invalid selected WAVs produce a clear startup error.
 
 The fourth panel button, **3 / Next pattern**, cycles:
@@ -65,17 +65,27 @@ The fourth panel button, **3 / Next pattern**, cycles:
 4. Rim Pocket — pocket groove with rim backbeats and a hat pickup
 5. Rim Four — quarter-note kick, rim backbeats and a kick pickup
 6. Rim Broken — broken kick/hat variation with rim ghosts
+7. Real Kit 6/8 — kick on 1; snare and tambourine hit on eighth note 5; shakes on 1, 2, 3, 4 and 6; triangle on 1, 3 and 5
 
 These are the original three lo-fi patterns from the former lo-fi/Yamaha
 bank, with their original note positions and accents. Three similar variations
-follow, replacing the snare with Yamaha SnareDrum Rim. Each is one bar of 4/4
-(16 sixteenths). The display shows the moving position and selected pattern.
-Changes preserve beat position, and a held button advances only once.
+follow, replacing the snare with Yamaha SnareDrum Rim. Patterns 1–6 are one bar
+of 4/4 (16 sixteenths). Pattern 7 is one bar of 6/8 (12 sixteenths): count
+six eighth notes, with snare and tambourine hit on 5, and only a shake on
+1, 2, 3, 4 and 6. Triangle also plays on 1, 3 and 5, and kick plays on 1.
+Intervening sixteenths are rests. All three hit and six
+shake variations cycle across bars, repeating together every six bars. MIDI Start resets the variation
+cycle; Song Position Pointer selects the matching bar and variation.
+The display follows the selected meter and bar length. Changes preserve beat
+position modulo the new bar length, and a held button advances only once.
 
 Pot 5 progressively admits brighter voices. Closed gives kick only; opening
 adds percussion and snare before cymbals and hi-hats. **Close filter · kick only**
 and **Open filter · full kit** preview the endpoints. Voice meters show the
-filter gains, and flashes show triggered notes. Pot 4 controls drum volume;
+filter gains, and flashes show triggered notes. In the 6/8 groove, the closed
+fader leaves tambourine hits and shakes only. Opening gradually adds triangle
+(4–32%), kick (36–64%), and finally snare (68–96%). **Close filter · tambourine only**
+previews its minimum. Pot 4 controls drum volume;
 pots 6–7 are unused in the sequencer. The existing MIDI/CV controls on pots
 0–3 retain their functions. LED 5 is lit for the rim variations.
 
@@ -83,10 +93,12 @@ The grooves share seven `use_`-prefixed samples in
 `minimal_lofi_sounds/`: kick, tom, snare, conga, claves, percussion stab and
 closed hats. Optional parts have rests; not every pattern plays every sample.
 The three rim variations replace only the snare with
-`Yamaha_Electone_HS5/use_HS5 - SnareDrum Rim.wav`. Both folders are required;
-only these eight WAVs are loaded. The pool is loaded once,
+`Yamaha_Electone_HS5/use_HS5 - SnareDrum Rim.wav`. The 6/8 groove uses `real_kit/snare.wav`
+and every `EAR_CANDY_tamourine_hit_var_*` and `EAR_CANDY_tamourine_shake_var_*` WAV,
+plus `EAR_CANDY_light_triangle.wav` and `kick_marius.wav`, in `real_kit/`.
+All three folders are required; 20 WAVs are loaded once,
 and ringing tails retain their sample identity across pattern changes.
-Closed filter leaves only the kick.
+Closed filter leaves only the kick in patterns 1–6, or tambourine in pattern 7.
 
 The saw/sine/EQ test source is now shown only in **KarplusResonator**, where
 it excites audio input. It does not control the drum machine. No microphone
@@ -135,5 +147,5 @@ python3 -m unittest discover -s projects/wi_pepper/simulator -p 'test_*.py' -v
 Tests exercise debounce, held-button behavior, program cycling, steady startup
 indication, pot updates, countdown routing, MIDI validation, JUNO stereo output,
 note release, Panic, audio stream cursors, drum playback, source/EQ sculpting,
-six one-bar pattern selections, selected lo-fi/rim sample loading, filter endpoints, MIDI clock override and
+seven pattern selections, 6/8 bar length and fifth-eighth accent, lo-fi/rim/real-kit loading, filter endpoints, MIDI clock override and
 transport, song positions, and invalid source/clock commands.

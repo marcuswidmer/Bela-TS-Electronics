@@ -32,7 +32,7 @@ public:
     bool sequencerLed() const { return program_ == PgmSequencer && sequencerLed_; }
     bool directMidiMode() const { return program_ == PgmSequencer && directMidiMode_; }
     bool sequenceLocked() const { return program_ == PgmSequencer && sequencer.sequenceFrozen(); }
-    bool rimDrumPattern() const { return program_ == PgmSequencer && sequencer.drums().currentPattern() >= 3; }
+    bool rimDrumPattern() const { return program_ == PgmSequencer && sequencer.drums().currentPattern() >= 3 && sequencer.drums().currentPattern() < WiAudioDrivenDrumMachine::RealKitPattern; }
     Program program() const { return program_; }
     const std::array<float, 4>& cvOutputs() const { return cvOutputs_; }
 

@@ -14,6 +14,22 @@ static std::vector<uint8_t> notesOnly(const std::vector<uint8_t>& bytes)
     return notes;
 }
 
+static void advanceToNextStep(WiPepper& pepper, float rate)
+{
+    int remaining = std::lround(rate * 3);
+    while(pepper.cvOutputs()[1] != 0 && --remaining > 0) pepper.processControls();
+    do { pepper.processControls(); } while(pepper.cvOutputs()[1] == 0 && --remaining > 0);
+    assert(remaining > 0);
+}
+
+static void clockStep(WiPepper& pepper)
+{
+    for(int pulse = 0; pulse < 6; ++pulse) {
+        pepper.midiRealtime(0xF8);
+        pepper.processControls();
+    }
+}
+
 static void checkAssignmentTiming(float rate)
 {
     WiPepper reference, edited;
@@ -36,10 +52,11 @@ static void checkAssignmentTiming(float rate)
         step - 1, step, // Replace just before a step, append exactly on it.
         2 * step + 1, 3 * step - 1
     };
+    const unsigned int assignmentPitches[] = {0, 1, 38, 39, 40, 60, 99, 127};
     unsigned int nextAssignment = 0;
     for(frame = 0; frame <= 4 * step; ++frame) {
         if(nextAssignment < assignmentTimes.size() && frame == assignmentTimes[nextAssignment]) {
-            edited.midiNoteOn(60 + nextAssignment, 100);
+            edited.midiNoteOn(assignmentPitches[nextAssignment], 100);
             ++nextAssignment;
         }
         reference.processControls();
@@ -77,15 +94,13 @@ static void checkAssignmentOrder(float rate)
     assert(starts == (std::vector<int>{2*step, 3*step, 4*step, 5*step,
                                      6*step, 7*step, 8*step, 9*step}));
 
-    // External ticks follow the same order, including notes appended while playing.
+    // MIDI Clock follows the same order, including notes appended while playing.
     assert(pepper.setup(44100, rate, [&](uint8_t byte) { bytes.push_back(byte); }));
-    pots[1] = 1;
+    pots[1] = 0;
     pepper.setPots(pots);
     pepper.processControls();
-    for(int i = 0; i < 2; ++i) {
-        pepper.midiNoteOn(0, 100);
-        pepper.processControls();
-    }
+    pepper.midiRealtime(0xFA);
+    for(int i = 0; i < 2; ++i) clockStep(pepper);
     pepper.midiNoteOn(67, 100);
     pepper.processControls(); // Assignment itself does not consume the first step.
     pepper.midiNoteOn(60, 100);
@@ -93,8 +108,7 @@ static void checkAssignmentOrder(float rate)
     bytes.clear();
     bool appended = false;
     for(int pitch : {67, 60, 64, 60, 67}) {
-        pepper.midiNoteOn(0, 100);
-        pepper.processControls();
+        clockStep(pepper);
         assert(std::abs(pepper.cvOutputs()[0] - (pitch - 39)/60.0f) < 1e-6f);
         if(!appended) {
             pepper.midiNoteOn(60, 100); // Append fourth note after first playback step.
@@ -121,15 +135,11 @@ int main()
             std::vector<uint8_t> output;
             assert(timed.setup(44100, rate, [&](uint8_t byte) { output.push_back(byte); }));
             std::array<float, 8> controls{{0, .1f, 0, 0, 0, 0, 0, 0}};
-            timed.setPots(controls);
-            timed.processControls();
-            timed.stopMidiNotes();
-            timed.pressButton(2);
             controls[3] = length;
             timed.setPots(controls);
             output.clear();
-            timed.midiNoteOn(0, 100); // One external tick; no intervening steps.
             timed.processControls();
+            timed.pressButton(2);
             assert(notesOnly(output) == (std::vector<uint8_t>{0x90, 40, 100}));
             const float seconds = length == 0 ? .01f : length == .5f ? 1.255f : 2.5f;
             const int ticks = std::lround(rate * seconds);
@@ -138,8 +148,11 @@ int main()
             for(int i = 1; i < ticks; ++i) timed.processControls();
             assert(notesOnly(output) == (std::vector<uint8_t>{0x90, 40, 100}));
             timed.processControls();
-            assert(notesOnly(output) == (std::vector<uint8_t>{0x90, 40, 100, 0x80, 40, 0}));
-            assert(timed.cvOutputs()[1] == 0); // CV gate stays 10 ms.
+            std::vector<uint8_t> expected{0x90, 40, 100, 0x80, 40, 0};
+            // A full-step duration ends exactly when the next internal step starts.
+            if(length == 1) expected.insert(expected.end(), {0x90, 40, 100});
+            assert(notesOnly(output) == expected);
+            assert(timed.cvOutputs()[1] == (length == 1)); // Only the new step reopens the CV gate.
         }
 
         // Direct-mode held notes follow input releases at both pot endpoints.
@@ -175,7 +188,7 @@ int main()
         pepper.processControls();
         assert(notesOnly(bytes) == (std::vector<uint8_t>{0x90, 40, 100, 0x80, 40, 0}));
 
-        // Assignment restores the input pitch; external ticks retrigger it.
+        // Assignment restores the input pitch; subsequent steps retrigger it.
         bytes.clear();
         pepper.midiNoteOn(127, 70, 4);
         pepper.processControls();
@@ -184,8 +197,7 @@ int main()
             pepper.processControls();
         assert(notesOnly(bytes) == (std::vector<uint8_t>{0x90, 127, 100}));
         bytes.clear();
-        pepper.midiNoteOn(0, 100);
-        pepper.processControls();
+        advanceToNextStep(pepper, rate);
         assert(notesOnly(bytes) == (std::vector<uint8_t>{0x80, 127, 0, 0x90, 127, 100}));
 
         // Switching to direct mode releases the currently sounding step.
@@ -219,8 +231,7 @@ int main()
         bytes.clear();
         pepper.processControls();
         assert(notesOnly(bytes).empty()); // No replay of direct-mode notes.
-        pepper.midiNoteOn(0, 100);
-        pepper.processControls();
+        advanceToNextStep(pepper, rate);
         assert(notesOnly(bytes) == (std::vector<uint8_t>{0x90, 127, 100}));
 
         bytes.clear();
@@ -263,8 +274,7 @@ int main()
         int previous = 43;
         for(int pitch : {47, 52, 55, 59, 40, 43}) {
             bytes.clear();
-            pepper.midiNoteOn(0, 100);
-            pepper.processControls();
+            advanceToNextStep(pepper, rate);
             assert(notesOnly(bytes) == (std::vector<uint8_t>{0x80, static_cast<uint8_t>(previous), 0,
                                                             0x90, static_cast<uint8_t>(pitch), 100}));
             previous = pitch;

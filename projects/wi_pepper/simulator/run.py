@@ -44,11 +44,14 @@ class Engine:
         self.lib.pepper_drum_pattern_count.restype = ctypes.c_uint
         self.pattern_count = self.lib.pepper_drum_pattern_count()
         self.lib.pepper_drum_step_count.restype = ctypes.c_uint
+        self.lib.pepper_pattern_step_count.argtypes = [ctypes.c_uint]
+        self.lib.pepper_pattern_step_count.restype = ctypes.c_uint
         self.lib.pepper_drum_sample_count.restype = ctypes.c_uint
         self.step_count = self.lib.pepper_drum_step_count()
+        self.step_counts = [self.lib.pepper_pattern_step_count(i) for i in range(self.pattern_count)]
         self.sample_count = self.lib.pepper_drum_sample_count()
         self.drum_patterns = [[[self.lib.pepper_pattern_velocity(pattern, voice, step)
-                                for step in range(self.step_count)] for voice in range(7)] for pattern in range(self.pattern_count)]
+                                for step in range(self.step_counts[pattern])] for voice in range(7)] for pattern in range(self.pattern_count)]
         self.pattern_names = [self.lib.pepper_pattern_name(i).decode() for i in range(self.pattern_count)]
         self.voice_names = [[self.lib.pepper_voice_name(pattern, voice).decode() for voice in range(7)] for pattern in range(self.pattern_count)]
         self.lib.pepper_destroy.argtypes = [ctypes.c_void_p]
@@ -125,7 +128,8 @@ class Engine:
                           "intensities": list(drums[30:37]), "velocities": list(drums[37:44]),
                           "pattern": self.drum_patterns[pattern], "patternIndex": pattern,
                           "name": self.pattern_names[pattern], "patterns": self.pattern_names,
-                          "kit": "Lo-fi" if pattern < 3 else "Lo-fi + Yamaha rim", "stepCount": self.step_count, "sampleCount": self.sample_count,
+                          "kit": "Lo-fi" if pattern < 3 else "Lo-fi + Yamaha rim" if pattern < 6 else "Real kit",
+                          "stepCount": self.step_counts[pattern], "timeSignature": "6/8" if pattern == 6 else "4/4", "sampleCount": self.sample_count,
                           "voices": self.voice_names[pattern], "filter": drums[46]},
                 "clock": {"bpm": drums[4], "running": bool(drums[5])},
                 "source": {"enabled": bool(drums[6]), "frequency": drums[7],

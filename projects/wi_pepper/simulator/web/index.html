@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#121719">
   <title>Pepper · Local instrument</title>
   <link rel="stylesheet" href="style.css">
-  <script src="app.js?v=drum-machine-six-4" defer></script>
+  <script src="app.js?v=drum-machine-seven-4" defer></script>
 </head>
 <body>
   <header class="topbar"><a class="wordmark" href="/">bela<span> / </span>pepper</a><span class="session"><i id="connection-dot"></i><span id="connection">Connecting…</span></span></header>
@@ -39,14 +39,14 @@
       </section>
       <section class="control-guide"><div class="section-label">BUTTONS <span>left → right</span></div><div id="button-guide"></div></section>
       <section class="connections" id="drum-controls" aria-label="Drum machine">
-        <div class="section-label">DRUM MACHINE <span>Lo-fi + rim · six one-bar grooves</span></div>
+        <div class="section-label">DRUM MACHINE <span>Seven grooves · 4/4 + 6/8</span></div>
         <button id="drum-demo" type="button">Start drums</button>
-        <p class="muted">Press the fourth button (3) to cycle three original lo-fi grooves and three Yamaha-rim variations. Pot 4 controls volume. Pot 5 opens the filter from kick only to the full kit.</p>
-        <h3 id="drum-pattern-name">1 / 6 · Lo-fi Pocket</h3>
+        <p class="muted">Button 3 cycles three lo-fi grooves, three Yamaha-rim variations, and Real Kit 6/8. Pot 4 controls volume. In pattern 7, pot 5 starts with tambourine and gradually adds triangle, kick, then snare. Count six eighth notes: kick on 1, triangle on 1, 3 and 5, snare + tambourine hit on 5, and shakes on 1, 2, 3, 4 and 6. All tambourine variations cycle across bars.</p>
+        <h3 id="drum-pattern-name">1 / 7 · Lo-fi Pocket</h3>
         <div class="clock-buttons"><button id="kick-only" type="button">Close filter · kick only</button><button id="hat-only" type="button">Open filter · full kit</button></div>
         <div id="drum-voices" aria-label="Voices admitted by the filter"></div>
         <p id="drum-status" role="status">Loading drum samples…</p>
-        <div class="section-label">PATTERN <span>16 sixteenths · one bar of 4/4</span></div>
+        <div class="section-label">PATTERN <span id="drum-pattern-meter">16 sixteenths · one bar of 4/4</span></div>
         <div id="drum-pattern" aria-label="Programmed drum pattern"></div>
       </section>
       <section class="connections" id="source-controls" aria-label="Resonator input" hidden>
